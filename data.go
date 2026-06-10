@@ -1,87 +1,12 @@
 package mofu
 
 import (
-	"context"
-	"fmt"
 	"sync"
-	"time"
 )
 
-type DataCallback func(oldVal, newVal any)
-
-type DataNode struct {
-	ID        string
-	Value     any
-	Source    string
-	Version   int64
-	Updated   time.Time
-	mu        sync.RWMutex
-	listeners map[string][]DataCallback
-}
-
-func NewDataNode(id string, val any) *DataNode {
-	return &DataNode{
-		ID:        id,
-		Value:     val,
-		Source:    "local",
-		Version:   1,
-		Updated:   time.Now(),
-		listeners: make(map[string][]DataCallback),
-	}
-}
-
-func (dn *DataNode) Get() any {
-	dn.mu.RLock()
-	defer dn.mu.RUnlock()
-	return dn.Value
-}
-
-func (dn *DataNode) Set(val any) {
-	dn.mu.Lock()
-	old := dn.Value
-	dn.Value = val
-	dn.Version++
-	dn.Updated = time.Now()
-	listeners := make(map[string][]DataCallback)
-	for k, v := range dn.listeners {
-		clist := make([]DataCallback, len(v))
-		copy(clist, v)
-		listeners[k] = clist
-	}
-	dn.mu.Unlock()
-	for _, cbs := range listeners {
-		for _, cb := range cbs {
-			if cb != nil {
-				cb(old, val)
-			}
-		}
-	}
-}
-
-func (dn *DataNode) Subscribe(id string, fn DataCallback) {
-	dn.mu.Lock()
-	defer dn.mu.Unlock()
-	dn.listeners[id] = append(dn.listeners[id], fn)
-}
-
-func (dn *DataNode) Unsubscribe(id string, fn DataCallback) {
-	dn.mu.Lock()
-	defer dn.mu.Unlock()
-	cbs := dn.listeners[id]
-	for i, cb := range cbs {
-		if fmt.Sprintf("%p", cb) == fmt.Sprintf("%p", fn) {
-			dn.listeners[id] = append(cbs[:i], cbs[i+1:]...)
-			return
-		}
-	}
-}
-
-type DataSource interface {
-	Read() (any, error)
-	Watch(ctx context.Context, onData func(any)) error
-	Close() error
-}
-
+// DataStore retains ownership of the DataNode registry helpers that do not
+// belong in state.go. Path-based subscriptions and the reactive graph live in
+// state.go; DataStore remains the legacy flat store.
 type DataStore struct {
 	nodes map[string]*DataNode
 	mu    sync.RWMutex
@@ -121,18 +46,18 @@ func (ds *DataStore) Delete(id string) {
 
 func (ds *DataStore) Subscribe(id string, fn DataCallback) {
 	ds.mu.RLock()
-	node := ds.nodes[id]
+	node, ok := ds.nodes[id]
 	ds.mu.RUnlock()
-	if node != nil {
+	if ok {
 		node.Subscribe("datastore", fn)
 	}
 }
 
 func (ds *DataStore) Unsubscribe(id string, fn DataCallback) {
 	ds.mu.RLock()
-	node := ds.nodes[id]
+	node, ok := ds.nodes[id]
 	ds.mu.RUnlock()
-	if node != nil {
+	if ok {
 		node.Unsubscribe("datastore", fn)
 	}
 }
@@ -150,5 +75,13 @@ func (ds *DataStore) Snapshot() map[string]any {
 func (ds *DataStore) Restore(snap map[string]any) {
 	for id, val := range snap {
 		ds.Set(id, val)
+	}
+}
+
+func (ds *DataStore) ForEach(fn func(id string, node *DataNode)) {
+	ds.mu.RLock()
+	defer ds.mu.RUnlock()
+	for id, node := range ds.nodes {
+		fn(id, node)
 	}
 }

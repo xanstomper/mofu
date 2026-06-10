@@ -11,25 +11,28 @@ import (
 )
 
 type Program struct {
-	root          Node
-	renderer      *Renderer
-	theme         *Theme
-	scheduler     *Scheduler
-	animator      *Animator
-	eventBus      *EventBus
-	dataStore     *DataStore
+	root Node
+	renderer *Renderer
+	theme *Theme
+	scheduler *Scheduler
+	animator *Animator
+	eventBus *EventBus
+	dataStore *DataStore
 	width, height int
-	running       bool
-	mu            sync.Mutex
-	ctx           context.Context
-	cancel        context.CancelFunc
+	running bool
+	mu sync.Mutex
+	ctx context.Context
+	cancel context.CancelFunc
 
-	eventCh  chan Event
+	eventCh chan Event
 	renderCh chan struct{}
 
 	oldState *term.State
 
 	channels []OutputChannel
+	sm *StateMachine
+	rt *Runtime
+	stateGraph *StateGraph
 }
 
 type Option func(*Program)
@@ -46,20 +49,26 @@ func WithOutput(ch OutputChannel) Option {
 	return func(p *Program) { p.channels = append(p.channels, ch) }
 }
 
+func WithStateGraph(g *StateGraph) Option {
+	return func(p *Program) { p.stateGraph = g }
+}
+
 func New(root Node, opts ...Option) *Program {
 	ctx, cancel := context.WithCancel(context.Background())
 	p := &Program{
-		root:      root,
-		theme:     DefaultTheme(),
-		animator:  NewAnimator(),
+		root: root,
+		theme: DefaultTheme(),
+		animator: NewAnimator(),
 		scheduler: NewScheduler(60),
-		eventBus:  NewEventBus(),
+		eventBus: NewEventBus(),
 		dataStore: NewDataStore(),
-		eventCh:   make(chan Event, 64),
-		renderCh:  make(chan struct{}, 1),
-		ctx:       ctx,
-		cancel:    cancel,
+		eventCh: make(chan Event, 64),
+		renderCh: make(chan struct{}, 1),
+		ctx: ctx,
+		cancel: cancel,
+		sm: newStateMachine(StateInit),
 	}
+	p.rt = NewRuntime("local", "program", RuntimeConfig{})
 	for _, opt := range opts {
 		opt(p)
 	}
@@ -82,6 +91,7 @@ func (p *Program) Run() error {
 	defer term.Restore(int(os.Stdin.Fd()), p.oldState)
 
 	p.running = true
+	p.sm.TransitionTo(StateReady)
 	p.renderer = NewRenderer(p.width, p.height, p.theme)
 
 	os.Stdout.WriteString("\x1b[2J\x1b[?25l")
@@ -264,6 +274,10 @@ func (p *Program) Quit() {
 	defer p.mu.Unlock()
 	p.running = false
 	p.cancel()
+	if p.sm != nil {
+		p.sm.TransitionTo(StateStopping)
+		p.sm.TransitionTo(StateDone)
+	}
 	p.scheduler.Stop()
 	p.root.Unmount()
 	os.Stdout.WriteString("\x1b[?25h\x1b[2J\x1b[1;1H")
