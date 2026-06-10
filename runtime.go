@@ -5,40 +5,60 @@ import (
 	"os"
 	"os/signal"
 	"sync"
+	"time"
 
 	"golang.org/x/term"
 )
 
-// Program is a Mofu application instance.
 type Program struct {
-	root     Component
-	tree     *Tree
-	renderer *Renderer
-	theme    *Theme
-	animator *Animator
-	eventBus *EventBus
-	width    int
-	height   int
-	running  bool
-	mu       sync.Mutex
-	ctx      context.Context
-	cancel   context.CancelFunc
+	root          Node
+	renderer      *Renderer
+	theme         *Theme
+	scheduler     *Scheduler
+	animator      *Animator
+	eventBus      *EventBus
+	dataStore     *DataStore
+	width, height int
+	running       bool
+	mu            sync.Mutex
+	ctx           context.Context
+	cancel        context.CancelFunc
+
+	eventCh  chan Event
+	renderCh chan struct{}
+
 	oldState *term.State
-	output   *os.File
+
+	channels []OutputChannel
 }
 
-// New creates a new Mofu program with the given root component.
-func New(root Component, opts ...Option) *Program {
+type Option func(*Program)
+
+func WithTheme(t *Theme) Option {
+	return func(p *Program) { p.theme = t }
+}
+
+func WithSize(w, h int) Option {
+	return func(p *Program) { p.width = w; p.height = h }
+}
+
+func WithOutput(ch OutputChannel) Option {
+	return func(p *Program) { p.channels = append(p.channels, ch) }
+}
+
+func New(root Node, opts ...Option) *Program {
 	ctx, cancel := context.WithCancel(context.Background())
 	p := &Program{
-		root:     root,
-		tree:     NewTree(root),
-		theme:    DefaultTheme(),
-		animator: NewAnimator(),
-		eventBus: NewEventBus(),
-		ctx:      ctx,
-		cancel:   cancel,
-		output:   os.Stdout,
+		root:      root,
+		theme:     DefaultTheme(),
+		animator:  NewAnimator(),
+		scheduler: NewScheduler(60),
+		eventBus:  NewEventBus(),
+		dataStore: NewDataStore(),
+		eventCh:   make(chan Event, 64),
+		renderCh:  make(chan struct{}, 1),
+		ctx:       ctx,
+		cancel:    cancel,
 	}
 	for _, opt := range opts {
 		opt(p)
@@ -46,22 +66,7 @@ func New(root Component, opts ...Option) *Program {
 	return p
 }
 
-// Option configures a Program.
-type Option func(*Program)
-
-// WithTheme sets the program theme.
-func WithTheme(t *Theme) Option {
-	return func(p *Program) { p.theme = t }
-}
-
-// WithSize sets the initial terminal size.
-func WithSize(w, h int) Option {
-	return func(p *Program) { p.width = w; p.height = h }
-}
-
-// Run starts the program event loop.
 func (p *Program) Run() error {
-	// Get terminal size
 	width, height, err := term.GetSize(int(os.Stdout.Fd()))
 	if err != nil {
 		width = 80
@@ -70,7 +75,6 @@ func (p *Program) Run() error {
 	p.width = width
 	p.height = height
 
-	// Enable raw mode
 	p.oldState, err = term.MakeRaw(int(os.Stdin.Fd()))
 	if err != nil {
 		return err
@@ -80,200 +84,202 @@ func (p *Program) Run() error {
 	p.running = true
 	p.renderer = NewRenderer(p.width, p.height, p.theme)
 
-	// Mount all components
-	cmds := p.tree.Root.MountAll()
-
-	// Clear screen and hide cursor
 	os.Stdout.WriteString("\x1b[2J\x1b[?25l")
 
-	// Initial render
-	p.render()
-
-	// Execute initial commands
-	for _, cmd := range cmds {
-		if cmd != nil {
-			go func(c Cmd) { c() }(cmd)
-		}
+	cmds := p.root.Mount()
+	if cmds != nil {
+		go cmds()
 	}
 
-	// Handle signals
-	sigCh := make(chan os.Signal, 1)
-	signal.Notify(sigCh, os.Interrupt, os.Kill)
+	p.scheduler.Start()
+	go p.eventLoop()
+	go p.renderLoop()
+	p.stateLoop()
 
-	// Read input in a goroutine
-	inputCh := make(chan []byte, 64)
-	go p.readInput(inputCh)
-
-	for p.running {
-		select {
-		case <-p.ctx.Done():
-			p.running = false
-		case sig := <-sigCh:
-			switch sig {
-			case os.Interrupt:
-				p.Quit()
-			}
-		case buf := <-inputCh:
-			p.handleInput(buf)
-		}
-	}
-
-	// Show cursor and clear
-	os.Stdout.WriteString("\x1b[?25h\x1b[2J\x1b[1;1H")
 	return nil
 }
 
-func (p *Program) readInput(ch chan<- []byte) {
+func (p *Program) eventLoop() {
+	sigCh := make(chan os.Signal, 1)
+	signal.Notify(sigCh, os.Interrupt)
+
 	buf := make([]byte, 128)
-	for {
+	for p.running {
 		n, err := os.Stdin.Read(buf)
 		if err != nil || n == 0 {
-			return
+			continue
 		}
-		tmp := make([]byte, n)
-		copy(tmp, buf[:n])
-		ch <- tmp
+		data := make([]byte, n)
+		copy(data, buf[:n])
+		p.handleRawInput(data)
 	}
 }
 
-func (p *Program) handleInput(buf []byte) {
-	p.mu.Lock()
-	defer p.mu.Unlock()
-
-	if len(buf) == 0 {
+func (p *Program) handleRawInput(data []byte) {
+	if len(data) == 0 {
 		return
 	}
-
-	// Check for escape sequences
-	if buf[0] == 0x1b && len(buf) > 1 {
-		p.handleEscape(buf)
+	if data[0] == 0x1b && len(data) > 1 {
+		p.handleEscapeSeq(data)
 		return
 	}
-
-	// Regular key press
-	msg := KeyPressMsg{Runes: buf}
-	p.eventBus.Publish(EventKeyPress, msg)
-	cmd := p.root.HandleEvent(msg)
-	if cmd != nil {
-		go cmd()
+	ev := Event{
+		Type: EventKeyPress,
+		Data: KeyEvent{Runes: data},
+		Time: time.Now(),
 	}
-	p.render()
+	p.eventBus.Publish(ev)
+	select {
+	case p.eventCh <- ev:
+	default:
+	}
 }
 
-func (p *Program) handleEscape(buf []byte) {
-	if len(buf) >= 3 && buf[1] == '[' {
-		switch buf[2] {
-		case 'A': // Up
-			msg := KeyPressMsg{Runes: buf, Key: KeyUp}
-			p.dispatch(msg)
-		case 'B': // Down
-			msg := KeyPressMsg{Runes: buf, Key: KeyDown}
-			p.dispatch(msg)
-		case 'C': // Right
-			msg := KeyPressMsg{Runes: buf, Key: KeyRight}
-			p.dispatch(msg)
-		case 'D': // Left
-			msg := KeyPressMsg{Runes: buf, Key: KeyLeft}
-			p.dispatch(msg)
+func (p *Program) handleEscapeSeq(data []byte) {
+	if len(data) >= 3 && data[1] == '[' {
+		var key Key
+		switch data[2] {
+		case 'A':
+			key = KeyUp
+		case 'B':
+			key = KeyDown
+		case 'C':
+			key = KeyRight
+		case 'D':
+			key = KeyLeft
+		case 'H':
+			key = KeyHome
+		case 'F':
+			key = KeyEnd
 		default:
-			msg := KeyPressMsg{Runes: buf}
-			p.dispatch(msg)
+			if data[2] >= '1' && data[2] <= '6' && len(data) >= 4 {
+				switch data[2] {
+				case '1':
+					if len(data) >= 4 && data[3] == '~' {
+						key = KeyHome
+					}
+				case '2':
+					key = KeyF1
+				case '3':
+					key = KeyF2
+				case '4':
+					key = KeyEnd
+				case '5':
+					key = KeyPgUp
+				case '6':
+					key = KeyPgDn
+				}
+			}
 		}
-		return
-	}
-	msg := KeyPressMsg{Runes: buf}
-	p.dispatch(msg)
-}
-
-func (p *Program) dispatch(msg Msg) {
-	p.eventBus.Publish(EventKeyPress, msg)
-	cmd := p.root.HandleEvent(msg)
-	if cmd != nil {
-		go cmd()
-	}
-	p.render()
-}
-
-func (p *Program) handleResize() {
-	width, height, err := term.GetSize(int(os.Stdout.Fd()))
-	if err != nil {
-		return
-	}
-	p.mu.Lock()
-	p.width = width
-	p.height = height
-	if p.renderer != nil {
-		p.renderer.Resize(width, height)
-	}
-	p.mu.Unlock()
-	p.eventBus.Publish(EventResize, ResizeMsg{Width: width, Height: height})
-	p.render()
-}
-
-func (p *Program) render() {
-	p.mu.Lock()
-	defer p.mu.Unlock()
-	if p.renderer == nil {
-		return
-	}
-	p.renderer.Clear()
-
-	// Compute layout
-	bounds := Rect{0, 0, p.width, p.height}
-	rootNode := &LayoutNode{
-		Component: p.root,
-		Layout:    LayoutColumn,
-		Visible:   true,
-		Rect:      bounds,
-	}
-	ComputeLayout(rootNode, bounds)
-
-	// Render component tree
-	p.renderNode(rootNode)
-
-	// Flush to terminal
-	output := p.renderer.Flush()
-	if output != "" {
-		os.Stdout.WriteString(output)
+		ev := Event{
+			Type: EventKeyPress,
+			Data: KeyEvent{Runes: data, Key: key},
+			Time: time.Now(),
+		}
+		p.eventBus.Publish(ev)
+		select {
+		case p.eventCh <- ev:
+		default:
+		}
 	}
 }
 
-func (p *Program) renderNode(node *LayoutNode) {
-	if !node.Visible {
-		return
-	}
-	text := node.Component.Render()
-	if text != "" {
-		r := node.Rect
-		style := DefaultStyle().Fg(p.theme.Colors.Text).Bg(p.theme.Colors.Background)
-		p.renderer.WriteStyledString(text, r.X, r.Y, style)
-	}
-	for _, child := range node.Children {
-		p.renderNode(child)
+func (p *Program) stateLoop() {
+	for p.running {
+		select {
+		case <-p.ctx.Done():
+			return
+		case ev := <-p.eventCh:
+			p.mu.Lock()
+			cmd := p.root.HandleEvent(ev)
+			p.mu.Unlock()
+			if cmd != nil {
+				go func() {
+					msg := cmd()
+					if msg != nil {
+						select {
+						case p.eventCh <- Event{Type: EventSystem, Data: msg, Time: time.Now()}:
+						default:
+						}
+					}
+				}()
+			}
+			p.requestRender()
+		case sig := <-signalCh():
+			switch sig {
+			case os.Interrupt:
+				p.Quit()
+				return
+			}
+		}
 	}
 }
 
-// Quit stops the program.
+func signalCh() chan os.Signal {
+	ch := make(chan os.Signal, 1)
+	signal.Notify(ch, os.Interrupt)
+	return ch
+}
+
+func (p *Program) requestRender() {
+	select {
+	case p.renderCh <- struct{}{}:
+	default:
+	}
+}
+
+func (p *Program) renderLoop() {
+	for p.running {
+		select {
+		case <-p.ctx.Done():
+			return
+		case tick := <-p.scheduler.FrameCh():
+			p.mu.Lock()
+			p.animator.Update(tick.Delta)
+			p.renderer.Clear()
+
+			bounds := Rect{0, 0, p.width, p.height}
+			ComputeLayout(p.root, bounds)
+
+			ctx := &RenderContext{
+				Renderer: p.renderer,
+				Theme:    p.theme,
+				Frame:    tick.Frame,
+				Delta:    tick.Delta,
+				Bounds:   bounds,
+			}
+			p.root.Render(ctx)
+
+			output := p.renderer.Flush()
+			if output != "" {
+				os.Stdout.WriteString(output)
+			}
+			p.mu.Unlock()
+		}
+	}
+}
+
 func (p *Program) Quit() {
 	p.mu.Lock()
 	defer p.mu.Unlock()
 	p.running = false
 	p.cancel()
-	p.tree.Root.UnmountAll()
+	p.scheduler.Stop()
+	p.root.Unmount()
+	os.Stdout.WriteString("\x1b[?25h\x1b[2J\x1b[1;1H")
 }
 
-// Send sends a message to the root component.
 func (p *Program) Send(msg Msg) {
 	p.mu.Lock()
 	defer p.mu.Unlock()
-	cmd := p.root.HandleEvent(msg)
+	ev := Event{Type: EventSystem, Data: msg, Time: time.Now()}
+	cmd := p.root.HandleEvent(ev)
 	if cmd != nil {
 		go cmd()
 	}
-	p.render()
+	p.requestRender()
 }
 
-// Resize updates the program dimensions.
 func (p *Program) Resize(w, h int) {
 	p.mu.Lock()
 	defer p.mu.Unlock()
@@ -282,41 +288,11 @@ func (p *Program) Resize(w, h int) {
 	if p.renderer != nil {
 		p.renderer.Resize(w, h)
 	}
+	p.requestRender()
 }
 
-// Theme returns the program's theme.
-func (p *Program) Theme() *Theme { return p.theme }
-
-// Animator returns the program's animator.
-func (p *Program) Animator() *Animator { return p.animator }
-
-// EventBus returns the program's event bus.
-func (p *Program) EventBus() *EventBus { return p.eventBus }
-
-// KeyPressMsg is sent when a key is pressed.
-type KeyPressMsg struct {
-	Runes []byte
-	Key   Key
-}
-
-// Key represents a special key.
-type Key int
-
-const (
-	KeyNone  Key = 0
-	KeyUp    Key = 1
-	KeyDown  Key = 2
-	KeyRight Key = 3
-	KeyLeft  Key = 4
-	KeyEnter Key = 5
-	KeyEsc   Key = 6
-	KeyTab   Key = 7
-	KeySpace Key = 8
-	KeyBack  Key = 9
-)
-
-// ResizeMsg is sent when the terminal is resized.
-type ResizeMsg struct {
-	Width  int
-	Height int
-}
+func (p *Program) Theme() *Theme         { return p.theme }
+func (p *Program) Renderer() *Renderer   { return p.renderer }
+func (p *Program) Scheduler() *Scheduler { return p.scheduler }
+func (p *Program) EventBus() *EventBus   { return p.eventBus }
+func (p *Program) DataStore() *DataStore { return p.dataStore }

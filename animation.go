@@ -2,13 +2,12 @@ package mofu
 
 import (
 	"math"
+	"sync"
 	"time"
 )
 
-// EasingFunc defines an easing curve.
 type EasingFunc func(t float64) float64
 
-// Standard easing functions
 var (
 	EaseLinear = func(t float64) float64 { return t }
 
@@ -47,9 +46,7 @@ var (
 		return math.Pow(2, -10*t)*math.Sin((t-0.1)*5*math.Pi) + 1
 	}
 
-	EaseInBounce = func(t float64) float64 {
-		return 1 - EaseOutBounce(1-t)
-	}
+	EaseInBounce  = func(t float64) float64 { return 1 - EaseOutBounce(1-t) }
 	EaseOutBounce = func(t float64) float64 {
 		if t < 1/2.75 {
 			return 7.5625 * t * t
@@ -77,110 +74,120 @@ var (
 	}
 )
 
-// Animation represents a single animated value.
-type Animation struct {
-	From     float64
-	To       float64
-	Duration time.Duration
-	Easing   EasingFunc
-	OnUpdate func(value float64)
-	OnDone   func()
-	start    time.Time
-	running  bool
+type Tween struct {
+	From, To   float64
+	Duration   time.Duration
+	Easing     EasingFunc
+	OnUpdate   func(value float64)
+	OnComplete func()
+	Playing    bool
+	Paused     bool
+	elapsed    time.Duration
 }
 
-// Animator manages multiple animations.
 type Animator struct {
-	animations []*Animation
-	ticker     *time.Ticker
-	running    bool
+	tweens []*Tween
+	mu     sync.Mutex
 }
 
-// NewAnimator creates a new animator.
 func NewAnimator() *Animator {
 	return &Animator{}
 }
 
-// Start begins an animation.
-func (a *Animator) Start(anim *Animation) {
-	anim.start = time.Now()
-	anim.running = true
-	a.animations = append(a.animations, anim)
-
-	if !a.running {
-		a.running = true
-		a.ticker = time.NewTicker(16 * time.Millisecond) // ~60fps
-		go a.runLoop()
-	}
+func (a *Animator) Add(t *Tween) {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	t.Playing = true
+	t.elapsed = 0
+	a.tweens = append(a.tweens, t)
 }
 
-func (a *Animator) runLoop() {
-	for range a.ticker.C {
-		if !a.running {
+func (a *Animator) Remove(t *Tween) {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	for i, tw := range a.tweens {
+		if tw == t {
+			a.tweens = append(a.tweens[:i], a.tweens[i+1:]...)
 			return
 		}
-		now := time.Now()
-		allDone := true
-		for _, anim := range a.animations {
-			if !anim.running {
-				continue
-			}
-			elapsed := now.Sub(anim.start)
-			t := float64(elapsed) / float64(anim.Duration)
-			if t >= 1.0 {
-				t = 1.0
-				anim.running = false
-				if anim.OnUpdate != nil {
-					anim.OnUpdate(anim.To)
-				}
-				if anim.OnDone != nil {
-					anim.OnDone()
-				}
-				continue
-			}
-			allDone = false
-			val := anim.From + (anim.To-anim.From)*anim.Easing(t)
-			if anim.OnUpdate != nil {
-				anim.OnUpdate(val)
-			}
-		}
-		if allDone {
-			a.running = false
-			a.ticker.Stop()
-		}
 	}
 }
 
-// FadeIn creates a fade-in animation from 0 to 1 over the given duration.
-func FadeIn(duration time.Duration, onUpdate func(value float64)) *Animation {
-	return &Animation{
+func (a *Animator) Clear() {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	a.tweens = nil
+}
+
+func (a *Animator) Update(delta time.Duration) {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	var remaining []*Tween
+	for _, t := range a.tweens {
+		if !t.Playing || t.Paused {
+			remaining = append(remaining, t)
+			continue
+		}
+		t.elapsed += delta
+		if t.elapsed >= t.Duration {
+			if t.OnUpdate != nil {
+				t.OnUpdate(t.To)
+			}
+			if t.OnComplete != nil {
+				t.OnComplete()
+			}
+			continue
+		}
+		frac := float64(t.elapsed) / float64(t.Duration)
+		val := t.From + (t.To-t.From)*t.Easing(frac)
+		if t.OnUpdate != nil {
+			t.OnUpdate(val)
+		}
+		remaining = append(remaining, t)
+	}
+	a.tweens = remaining
+}
+
+func FadeIn(dur time.Duration, node Node) *Tween {
+	s := node.Style()
+	return &Tween{
 		From:     0,
 		To:       1,
-		Duration: duration,
+		Duration: dur,
 		Easing:   EaseInOutCubic,
-		OnUpdate: onUpdate,
+		OnUpdate: func(val float64) { s.Opacity = val; node.SetDirty() },
 	}
 }
 
-// FadeOut creates a fade-out animation from 1 to 0.
-func FadeOut(duration time.Duration, onUpdate func(value float64), onDone func()) *Animation {
-	return &Animation{
+func FadeOut(dur time.Duration, node Node) *Tween {
+	s := node.Style()
+	return &Tween{
 		From:     1,
 		To:       0,
-		Duration: duration,
+		Duration: dur,
 		Easing:   EaseInCubic,
-		OnUpdate: onUpdate,
-		OnDone:   onDone,
+		OnUpdate: func(val float64) { s.Opacity = val; node.SetDirty() },
 	}
 }
 
-// SlideIn creates a slide-in animation.
-func SlideIn(distance float64, duration time.Duration, onUpdate func(value float64)) *Animation {
-	return &Animation{
-		From:     distance,
+func SlideInX(dur time.Duration, distance int, node Node) *Tween {
+	s := node.Style()
+	return &Tween{
+		From:     float64(distance),
 		To:       0,
-		Duration: duration,
+		Duration: dur,
 		Easing:   EaseOutCubic,
-		OnUpdate: onUpdate,
+		OnUpdate: func(val float64) { s.OffsetX = int(val); node.SetDirty() },
+	}
+}
+
+func SlideInY(dur time.Duration, distance int, node Node) *Tween {
+	s := node.Style()
+	return &Tween{
+		From:     float64(distance),
+		To:       0,
+		Duration: dur,
+		Easing:   EaseOutCubic,
+		OnUpdate: func(val float64) { s.OffsetY = int(val); node.SetDirty() },
 	}
 }

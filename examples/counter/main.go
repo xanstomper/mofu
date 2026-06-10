@@ -8,51 +8,48 @@ import (
 	"github.com/anomalyco/mofu/widgets"
 )
 
-// Counter is a simple counter component.
-type Counter struct {
+type App struct {
+	mofu.BaseNode
 	count int
 }
 
-func (c *Counter) Render() string {
-	return fmt.Sprintf("Count: %d\n\nPress 'q' to quit, 'j'/'k' or up/down to change", c.count)
+func (a *App) Render(ctx *mofu.RenderContext) {
+	r := ctx.Bounds
+	text := fmt.Sprintf("Count: %d\n\nPress 'q' to quit, 'j'/'k' to change", a.count)
+	ctx.Renderer.WriteStyledString(text, r.X, r.Y, *a.Style())
 }
 
-func (c *Counter) HandleEvent(msg mofu.Msg) mofu.Cmd {
-	switch msg := msg.(type) {
-	case mofu.KeyPressMsg:
-		for _, b := range msg.Runes {
-			switch {
-			case b == 'q' || b == 'Q':
-				return func() mofu.Msg {
-					os.Exit(0)
-					return nil
-				}
-			case b == 'j' || msg.Key == mofu.KeyDown:
-				c.count++
-			case b == 'k' || msg.Key == mofu.KeyUp:
-				c.count--
+func (a *App) HandleEvent(event mofu.Event) mofu.Cmd {
+	if event.Type != mofu.EventKeyPress {
+		return nil
+	}
+	ke, ok := event.Data.(mofu.KeyEvent)
+	if !ok {
+		return nil
+	}
+	for _, b := range ke.Runes {
+		switch {
+		case b == 'q' || b == 'Q':
+			return func() mofu.Msg {
+				os.Exit(0)
+				return nil
 			}
+		case b == 'j' || ke.Key == mofu.KeyDown:
+			a.count++
+		case b == 'k' || ke.Key == mofu.KeyUp:
+			a.count--
 		}
 	}
 	return nil
 }
 
-func (c *Counter) Mount() mofu.Cmd { return nil }
-func (c *Counter) Unmount()        {}
-
 func main() {
-	// Build a simple app with a boxed counter and a list
-	items := []widgets.ListItem{
-		{Title: "Item 1", Subtitle: "first"},
-		{Title: "Item 2", Subtitle: "second"},
-		{Title: "Item 3", Subtitle: "third"},
-	}
+	_ = widgets.NewText("")
+	app := &App{}
+	app.Style().Foreground = mofu.Hex("ff69b4")
 
-	list := widgets.NewList(items)
-	_ = list
-
-	app := mofu.New(&Counter{}, mofu.WithTheme(mofu.MochiTheme()))
-	if err := app.Run(); err != nil {
+	p := mofu.New(app, mofu.WithTheme(mofu.MochiTheme()))
+	if err := p.Run(); err != nil {
 		fmt.Fprintf(os.Stderr, "error: %v\n", err)
 		os.Exit(1)
 	}

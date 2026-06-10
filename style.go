@@ -2,19 +2,11 @@ package mofu
 
 import "fmt"
 
-// BorderStyle defines the characters used for drawing borders.
 type BorderStyle struct {
-	Top         rune
-	Bottom      rune
-	Left        rune
-	Right       rune
-	TopLeft     rune
-	TopRight    rune
-	BottomLeft  rune
-	BottomRight rune
+	Top, Bottom, Left, Right                   rune
+	TopLeft, TopRight, BottomLeft, BottomRight rune
 }
 
-// Predefined border styles
 var (
 	BorderNone   = BorderStyle{}
 	BorderHidden = BorderStyle{}
@@ -36,12 +28,35 @@ var (
 	}
 )
 
-// Spacing represents margin or padding.
 type Spacing struct {
 	Top, Right, Bottom, Left int
 }
 
-// Style defines the visual appearance of a component.
+type Align int
+
+const (
+	AlignLeft    Align = 0
+	AlignCenter  Align = 1
+	AlignRight   Align = 2
+	AlignStretch Align = 3
+)
+
+type Justify int
+
+const (
+	JustifyStart        Justify = 0
+	JustifyCenter       Justify = 1
+	JustifyEnd          Justify = 2
+	JustifySpaceBetween Justify = 3
+)
+
+type Direction int
+
+const (
+	DirectionRow    Direction = 0
+	DirectionColumn Direction = 1
+)
+
 type Style struct {
 	Foreground Color
 	Background Color
@@ -53,27 +68,29 @@ type Style struct {
 	Padding    Spacing
 	Width      int
 	Height     int
+	MinWidth   int
+	MinHeight  int
+	MaxWidth   int
+	MaxHeight  int
 	Align      Align
+	Gap        int
+	Grow       float64
+	Shrink     float64
+	Direction  Direction
+	Opacity    float64
+	OffsetX    int
+	OffsetY    int
+	Gutter     int
 }
 
-// Align represents text alignment.
-type Align int
-
-const (
-	AlignLeft   Align = 0
-	AlignCenter Align = 1
-	AlignRight  Align = 2
-)
-
-// DefaultStyle returns a style with sensible defaults.
 func DefaultStyle() Style {
 	return Style{
 		Foreground: ColorWhite,
 		Background: ColorTransparent,
+		Opacity:    1.0,
 	}
 }
 
-// SGR returns the ANSI SGR escape sequence for this style.
 func (s Style) SGR() string {
 	var out string
 	if !s.Foreground.IsANSI || s.Foreground != (Color{}) {
@@ -94,12 +111,10 @@ func (s Style) SGR() string {
 	return out
 }
 
-// Reset returns the ANSI reset sequence.
 func (s Style) Reset() string {
 	return "\x1b[0m"
 }
 
-// Apply wraps the given text in style/reset sequences.
 func (s Style) Apply(text string) string {
 	if text == "" {
 		return ""
@@ -107,19 +122,16 @@ func (s Style) Apply(text string) string {
 	return s.SGR() + text + s.Reset()
 }
 
-// Fg sets the foreground color.
 func (s Style) Fg(c Color) Style {
 	s.Foreground = c
 	return s
 }
 
-// Bg sets the background color.
 func (s Style) Bg(c Color) Style {
 	s.Background = c
 	return s
 }
 
-// Width returns a style string with a fixed width.
 func Width(w int) string {
 	return fmt.Sprintf("\x1b[%dG", w)
 }

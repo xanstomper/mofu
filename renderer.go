@@ -1,107 +1,108 @@
 package mofu
 
 import (
+	"bytes"
 	"strings"
 	"unicode/utf8"
 )
 
-// Cell represents a single terminal cell with character and style.
-type Cell struct {
-	Char  rune
-	Fg    Color
-	Bg    Color
-	Bold  bool
-	Dirty bool
+type SceneCell struct {
+	Char                    rune
+	Fg, Bg                  Color
+	Bold, Italic, Underline bool
+	Dirty                   bool
 }
 
-// CellBuffer holds a 2D grid of cells for the renderer.
-type CellBuffer struct {
-	Cells  [][]Cell
-	Width  int
-	Height int
+type SceneBuffer struct {
+	Cells         [][]SceneCell
+	Width, Height int
+	minX, minY    int
+	maxX, maxY    int
+	hasDirty      bool
 }
 
-// NewCellBuffer creates a new cell buffer with the given dimensions.
-func NewCellBuffer(w, h int) *CellBuffer {
-	cb := &CellBuffer{Width: w, Height: h}
-	cb.Cells = make([][]Cell, h)
+func NewSceneBuffer(w, h int) *SceneBuffer {
+	sb := &SceneBuffer{Width: w, Height: h}
+	sb.Cells = make([][]SceneCell, h)
 	for y := 0; y < h; y++ {
-		cb.Cells[y] = make([]Cell, w)
+		sb.Cells[y] = make([]SceneCell, w)
 	}
-	return cb
+	sb.minX = w
+	sb.minY = h
+	return sb
 }
 
-// Clear marks all cells as dirty and resets them.
-func (cb *CellBuffer) Clear() {
-	for y := 0; y < cb.Height; y++ {
-		for x := 0; x < cb.Width; x++ {
-			cb.Cells[y][x] = Cell{Char: ' ', Dirty: true}
+func (sb *SceneBuffer) Clear() {
+	sb.minX = sb.Width
+	sb.minY = sb.Height
+	sb.maxX = 0
+	sb.maxY = 0
+	sb.hasDirty = false
+	for y := 0; y < sb.Height; y++ {
+		for x := 0; x < sb.Width; x++ {
+			sb.Cells[y][x] = SceneCell{Char: ' ', Dirty: true}
 		}
 	}
 }
 
-// Set places a character at the given position with style.
-func (cb *CellBuffer) Set(x, y int, char rune, fg, bg Color, bold bool) {
-	if x < 0 || x >= cb.Width || y < 0 || y >= cb.Height {
+func (sb *SceneBuffer) Set(x, y int, char rune, fg, bg Color, bold, italic, underline bool) {
+	if x < 0 || x >= sb.Width || y < 0 || y >= sb.Height {
 		return
 	}
-	cell := &cb.Cells[y][x]
+	cell := &sb.Cells[y][x]
 	if cell.Char != char || cell.Fg != fg || cell.Bg != bg || cell.Bold != bold {
 		cell.Char = char
 		cell.Fg = fg
 		cell.Bg = bg
 		cell.Bold = bold
+		cell.Italic = italic
+		cell.Underline = underline
 		cell.Dirty = true
+		if x < sb.minX {
+			sb.minX = x
+		}
+		if y < sb.minY {
+			sb.minY = y
+		}
+		if x > sb.maxX {
+			sb.maxX = x
+		}
+		if y > sb.maxY {
+			sb.maxY = y
+		}
+		sb.hasDirty = true
 	}
 }
 
-// Renderer handles drawing to the terminal.
 type Renderer struct {
-	front  *CellBuffer
-	back   *CellBuffer
-	width  int
-	height int
-	theme  *Theme
-	styles map[string]Style
+	front, back   *SceneBuffer
+	width, height int
+	theme         *Theme
+	buf           bytes.Buffer
 }
 
-// NewRenderer creates a new renderer.
 func NewRenderer(w, h int, theme *Theme) *Renderer {
 	return &Renderer{
-		front:  NewCellBuffer(w, h),
-		back:   NewCellBuffer(w, h),
+		front:  NewSceneBuffer(w, h),
+		back:   NewSceneBuffer(w, h),
 		width:  w,
 		height: h,
 		theme:  theme,
-		styles: make(map[string]Style),
 	}
 }
 
-// Resize resizes the renderer's buffers.
 func (r *Renderer) Resize(w, h int) {
 	r.width = w
 	r.height = h
-	r.front = NewCellBuffer(w, h)
-	r.back = NewCellBuffer(w, h)
+	r.front = NewSceneBuffer(w, h)
+	r.back = NewSceneBuffer(w, h)
 }
 
-// Clear resets the front buffer.
 func (r *Renderer) Clear() {
 	r.front.Clear()
 }
 
-// SetStyle registers a named style.
-func (r *Renderer) SetStyle(name string, s Style) {
-	r.styles[name] = s
-}
-
-// GetStyle retrieves a named style.
-func (r *Renderer) GetStyle(name string) Style {
-	return r.styles[name]
-}
-
-// WriteString writes a string at the given position.
-func (r *Renderer) WriteString(text string, x, y int, fg, bg Color, bold bool) {
+func (r *Renderer) WriteString(text string, x, y int, fg, bg Color, bold, italic, underline bool) {
 	px := x
 	for _, ch := range text {
 		if ch == '\n' {
@@ -120,42 +121,54 @@ func (r *Renderer) WriteString(text string, x, y int, fg, bg Color, bold bool) {
 				break
 			}
 		}
-		r.front.Set(px, y, ch, fg, bg, bold)
+		r.front.Set(px, y, ch, fg, bg, bold, italic, underline)
 		px++
 	}
 }
 
-// WriteStyledString writes a string with inline style support.
 func (r *Renderer) WriteStyledString(text string, x, y int, style Style) {
-	r.WriteString(text, x, y, style.Foreground, style.Background, style.Bold)
+	r.WriteString(text, x, y, style.Foreground, style.Background, style.Bold, style.Italic, style.Underline)
 }
 
-// Flush outputs the differences between front and back buffers.
-// Returns the escape sequences needed to update the screen.
 func (r *Renderer) Flush() string {
-	var sb strings.Builder
-	for y := 0; y < r.height; y++ {
+	if !r.front.hasDirty && !r.back.hasDirty {
+		return ""
+	}
+	r.buf.Reset()
+	startY := r.front.minY
+	endY := r.front.maxY + 1
+	if endY <= startY {
+		endY = r.height
+		startY = 0
+	}
+	if startY < 0 {
+		startY = 0
+	}
+	if endY > r.height {
+		endY = r.height
+	}
+	for y := startY; y < endY; y++ {
 		for x := 0; x < r.width; x++ {
-			frontCell := r.front.Cells[y][x]
-			backCell := r.back.Cells[y][x]
-
-			if frontCell.Dirty || frontCell != backCell {
-				// Move cursor and apply style
-				if frontCell.Char != backCell.Char ||
-					frontCell.Fg != backCell.Fg ||
-					frontCell.Bg != backCell.Bg ||
-					frontCell.Bold != backCell.Bold {
-					sb.WriteString(cursorPos(y, x))
-					s := Style{Foreground: frontCell.Fg, Background: frontCell.Bg, Bold: frontCell.Bold}
-					sb.WriteString(s.SGR())
-					sb.WriteRune(frontCell.Char)
-					sb.WriteString(s.Reset())
-				}
-				r.back.Cells[y][x] = frontCell
+			fc := r.front.Cells[y][x]
+			bc := r.back.Cells[y][x]
+			if !fc.Dirty && fc.Char == bc.Char && fc.Fg == bc.Fg && fc.Bg == bc.Bg && fc.Bold == bc.Bold {
+				continue
 			}
+			r.buf.WriteString(cursorPos(y, x))
+			if fc.Char != ' ' || fc.Bold || fc.Fg != (Color{}) || fc.Bg != (Color{}) {
+				s := Style{Foreground: fc.Fg, Background: fc.Bg, Bold: fc.Bold}
+				r.buf.WriteString(s.SGR())
+				r.buf.WriteRune(fc.Char)
+				r.buf.WriteString(s.Reset())
+			} else {
+				r.buf.WriteRune(fc.Char)
+			}
+			r.back.Cells[y][x] = fc
 		}
 	}
-	return sb.String()
+	r.front.hasDirty = false
+	r.back.hasDirty = false
+	return r.buf.String()
 }
 
 func cursorPos(row, col int) string {
@@ -176,19 +189,7 @@ func itoa(n int) string {
 	return string(buf[i:])
 }
 
-// UpdateRegion marks a rectangular region as dirty.
-func (r *Renderer) UpdateRegion(x, y, w, h int) {
-	for dy := y; dy < y+h && dy < r.height; dy++ {
-		for dx := x; dx < x+w && dx < r.width; dx++ {
-			if dy >= 0 && dx >= 0 {
-				r.front.Cells[dy][dx].Dirty = true
-			}
-		}
-	}
-}
-
-// RenderText renders text with word wrapping into a string.
-func RenderText(text string, width int, style Style) string {
+func RenderText(text string, width int) string {
 	if width <= 0 {
 		return text
 	}
@@ -196,24 +197,24 @@ func RenderText(text string, width int, style Style) string {
 	for _, line := range strings.Split(text, "\n") {
 		words := strings.Fields(line)
 		if len(words) == 0 {
-			result.WriteString("\n")
+			result.WriteByte('\n')
 			continue
 		}
 		lineLen := 0
 		for _, word := range words {
 			wordLen := utf8.RuneCountInString(word)
 			if lineLen > 0 && lineLen+1+wordLen > width {
-				result.WriteString("\n")
+				result.WriteByte('\n')
 				lineLen = 0
 			}
 			if lineLen > 0 {
-				result.WriteString(" ")
+				result.WriteByte(' ')
 				lineLen++
 			}
 			result.WriteString(word)
 			lineLen += wordLen
 		}
-		result.WriteString("\n")
+		result.WriteByte('\n')
 	}
 	return strings.TrimRight(result.String(), "\n")
 }
