@@ -5,6 +5,8 @@ import (
 	"strconv"
 	"strings"
 	"time"
+
+	"github.com/anomalyco/mofu/message"
 )
 
 type MouseMode int
@@ -150,10 +152,11 @@ func (p *Program) handleMouseEvent(data []byte) {
 		Time: time.Now(),
 	}
 	p.eventBus.Publish(ev)
-	select {
-	case p.eventCh <- ev:
-	default:
-	}
+	p.kern.Bus.Publish(message.Message{
+		Type:    message.TypeInput,
+		Payload: ev,
+		Source:  "mouse",
+	})
 }
 
 func (p *Program) initMouseHandler() {

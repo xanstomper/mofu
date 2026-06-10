@@ -5,6 +5,8 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/anomalyco/mofu/message"
 )
 
 // State is the lifecycle state of the Program.
@@ -144,14 +146,14 @@ type RuntimeConfig struct {
 
 // Runtime is the canonical execution state for a Program.
 type Runtime struct {
-	ID          string
-	Type        string
-	State       string
-	Config      RuntimeConfig
-	Mounted     bool
+	ID           string
+	Type         string
+	State        string
+	Config       RuntimeConfig
+	Mounted      bool
 	mountDelayed bool
-	UpdateHook  func()
-	mu          sync.Mutex
+	UpdateHook   func()
+	mu           sync.Mutex
 }
 
 // NewRuntime builds a Runtime from configuration.
@@ -250,10 +252,12 @@ func WithProgramMessageRouter(p *Program) {
 		return
 	}
 	globalMessageRouter.SetDispatch(func(ev RoutedEvent) {
-		select {
-		case p.eventCh <- Event{Type: EventSystem, Data: ev.Msg, Time: time.Now()}:
-		default:
+		msg := message.Message{
+			Type:    message.TypeCommand,
+			Payload: ev.Msg,
+			Source:  ev.Source,
 		}
+		p.kern.Bus.Publish(msg)
 	})
 }
 
