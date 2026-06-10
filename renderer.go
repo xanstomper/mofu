@@ -2,23 +2,32 @@ package mofu
 
 import (
 	"bytes"
+	"sort"
 	"strings"
+	"sync"
 	"unicode/utf8"
+
+	"github.com/mattn/go-runewidth"
 )
 
-type SceneCell struct {
-	Char                    rune
-	Fg, Bg                  Color
+type Attrs struct {
 	Bold, Italic, Underline bool
-	Dirty                   bool
+}
+
+type SceneCell struct {
+	Char   rune
+	Fg, Bg Color
+	Attrs  AttrMask
+	Dirty  bool
+	Width  int
 }
 
 type SceneBuffer struct {
 	Cells         [][]SceneCell
 	Width, Height int
-	minX, minY    int
-	maxX, maxY    int
+	dirtyRects    []Rect
 	hasDirty      bool
+	pool          sync.Pool
 }
 
 func NewSceneBuffer(w, h int) *SceneBuffer {
@@ -27,67 +36,121 @@ func NewSceneBuffer(w, h int) *SceneBuffer {
 	for y := 0; y < h; y++ {
 		sb.Cells[y] = make([]SceneCell, w)
 	}
-	sb.minX = w
-	sb.minY = h
+	sb.pool.New = func() any {
+		return &bytes.Buffer{}
+	}
 	return sb
 }
 
+func (sb *SceneBuffer) CellWidth(ch rune) int {
+	if ch == 0 {
+		return 0
+	}
+	w := runewidth.RuneWidth(ch)
+	if w < 1 {
+		return 1
+	}
+	return w
+}
+
 func (sb *SceneBuffer) Clear() {
-	sb.minX = sb.Width
-	sb.minY = sb.Height
-	sb.maxX = 0
-	sb.maxY = 0
+	sb.dirtyRects = nil
 	sb.hasDirty = false
 	for y := 0; y < sb.Height; y++ {
 		for x := 0; x < sb.Width; x++ {
 			sb.Cells[y][x] = SceneCell{Char: ' ', Dirty: true}
 		}
 	}
+	sb.markRect(0, 0, sb.Width, sb.Height)
 }
 
-func (sb *SceneBuffer) Set(x, y int, char rune, fg, bg Color, bold, italic, underline bool) {
+func (sb *SceneBuffer) Set(x, y int, char rune, fg, bg Color, attrs AttrMask) {
 	if x < 0 || x >= sb.Width || y < 0 || y >= sb.Height {
 		return
 	}
+	cw := sb.CellWidth(char)
 	cell := &sb.Cells[y][x]
-	if cell.Char != char || cell.Fg != fg || cell.Bg != bg || cell.Bold != bold {
+	if cell.Char != char || cell.Fg != fg || cell.Bg != bg || cell.Attrs != attrs {
 		cell.Char = char
 		cell.Fg = fg
 		cell.Bg = bg
-		cell.Bold = bold
-		cell.Italic = italic
-		cell.Underline = underline
+		cell.Attrs = attrs
+		cell.Width = cw
 		cell.Dirty = true
-		if x < sb.minX {
-			sb.minX = x
+		sb.markRect(x, y, cw, 1)
+		if cw == 2 && x+1 < sb.Width {
+			sb.Cells[y][x+1] = SceneCell{Char: 0, Width: 0, Dirty: true}
 		}
-		if y < sb.minY {
-			sb.minY = y
-		}
-		if x > sb.maxX {
-			sb.maxX = x
-		}
-		if y > sb.maxY {
-			sb.maxY = y
-		}
-		sb.hasDirty = true
 	}
+}
+
+func (sb *SceneBuffer) markRect(x, y, w, h int) {
+	sb.hasDirty = true
+	sb.dirtyRects = append(sb.dirtyRects, Rect{X: x, Y: y, Width: w, Height: h})
+}
+
+func (sb *SceneBuffer) consolidateRects() []Rect {
+	if len(sb.dirtyRects) <= 1 {
+		return sb.dirtyRects
+	}
+	rects := sb.dirtyRects
+	sort.Slice(rects, func(i, j int) bool {
+		if rects[i].Y != rects[j].Y {
+			return rects[i].Y < rects[j].Y
+		}
+		return rects[i].X < rects[j].X
+	})
+	merged := make([]Rect, 0, len(rects))
+	for _, r := range rects {
+		if len(merged) == 0 {
+			merged = append(merged, r)
+			continue
+		}
+		last := &merged[len(merged)-1]
+		if r.Y <= last.Y+last.Height && r.X <= last.X+last.Width {
+			*last = mergeRects(*last, r)
+		} else {
+			merged = append(merged, r)
+		}
+	}
+	return merged
+}
+
+var ansiCache sync.Map
+
+func cachedSGR(fg, bg Color, attrs AttrMask) string {
+	key := styleKey{F: fg, B: bg, A: attrs}
+	if cached, ok := ansiCache.Load(key); ok {
+		return cached.(string)
+	}
+	s := Style{Foreground: fg, Background: bg, Attrs: attrs}
+	sgr := s.SGR()
+	ansiCache.Store(key, sgr)
+	return sgr
+}
+
+type styleKey struct {
+	F Color
+	B Color
+	A AttrMask
 }
 
 type Renderer struct {
 	front, back   *SceneBuffer
 	width, height int
 	theme         *Theme
+	lastRowStyle  []AttrMask
 	buf           bytes.Buffer
 }
 
 func NewRenderer(w, h int, theme *Theme) *Renderer {
 	return &Renderer{
-		front:  NewSceneBuffer(w, h),
-		back:   NewSceneBuffer(w, h),
-		width:  w,
-		height: h,
-		theme:  theme,
+		front:        NewSceneBuffer(w, h),
+		back:         NewSceneBuffer(w, h),
+		width:        w,
+		height:       h,
+		theme:        theme,
+		lastRowStyle: make([]AttrMask, h),
 	}
 }
 
@@ -96,13 +159,14 @@ func (r *Renderer) Resize(w, h int) {
 	r.height = h
 	r.front = NewSceneBuffer(w, h)
 	r.back = NewSceneBuffer(w, h)
+	r.lastRowStyle = make([]AttrMask, h)
 }
 
 func (r *Renderer) Clear() {
 	r.front.Clear()
 }
 
-func (r *Renderer) WriteString(text string, x, y int, fg, bg Color, bold, italic, underline bool) {
+func (r *Renderer) WriteString(text string, x, y int, fg, bg Color, attrs AttrMask) {
 	px := x
 	for _, ch := range text {
 		if ch == '\n' {
@@ -121,54 +185,87 @@ func (r *Renderer) WriteString(text string, x, y int, fg, bg Color, bold, italic
 				break
 			}
 		}
-		r.front.Set(px, y, ch, fg, bg, bold, italic, underline)
-		px++
+		r.front.Set(px, y, ch, fg, bg, attrs)
+		px += r.front.CellWidth(ch)
 	}
 }
 
 func (r *Renderer) WriteStyledString(text string, x, y int, style Style) {
-	r.WriteString(text, x, y, style.Foreground, style.Background, style.Bold, style.Italic, style.Underline)
+	r.WriteString(text, x, y, style.Foreground, style.Background, style.Attrs)
 }
 
 func (r *Renderer) Flush() string {
-	if !r.front.hasDirty && !r.back.hasDirty {
+	if !r.front.hasDirty {
 		return ""
 	}
 	r.buf.Reset()
-	startY := r.front.minY
-	endY := r.front.maxY + 1
-	if endY <= startY {
-		endY = r.height
-		startY = 0
-	}
-	if startY < 0 {
-		startY = 0
-	}
-	if endY > r.height {
-		endY = r.height
-	}
-	for y := startY; y < endY; y++ {
-		for x := 0; x < r.width; x++ {
-			fc := r.front.Cells[y][x]
-			bc := r.back.Cells[y][x]
-			if !fc.Dirty && fc.Char == bc.Char && fc.Fg == bc.Fg && fc.Bg == bc.Bg && fc.Bold == bc.Bold {
-				continue
+	rects := r.front.consolidateRects()
+
+	for _, rect := range rects {
+		for y := rect.Y; y < rect.Y+rect.Height && y < r.height; y++ {
+			rowStart := -1
+			var rowAttrs AttrMask
+			var rowFg, rowBg Color
+
+			for x := rect.X; x < rect.X+rect.Width && x < r.width; x++ {
+				fc := r.front.Cells[y][x]
+				bc := r.back.Cells[y][x]
+				if !fc.Dirty && fc.Char == bc.Char && fc.Fg == bc.Fg && fc.Bg == bc.Bg && fc.Attrs == bc.Attrs {
+					if rowStart >= 0 {
+						r.flushRowSegment(&fc, x, y, rowStart, x-1, rowFg, rowBg, rowAttrs)
+						rowStart = -1
+					}
+					continue
+				}
+				if rowStart < 0 {
+					rowStart = x
+					rowFg = fc.Fg
+					rowBg = fc.Bg
+					rowAttrs = fc.Attrs
+				} else if fc.Fg != rowFg || fc.Bg != rowBg || fc.Attrs != rowAttrs {
+					r.flushRowSegment(&fc, x, y, rowStart, x-1, rowFg, rowBg, rowAttrs)
+					rowStart = x
+					rowFg = fc.Fg
+					rowBg = fc.Bg
+					rowAttrs = fc.Attrs
+				}
+				r.back.Cells[y][x] = fc
 			}
-			r.buf.WriteString(cursorPos(y, x))
-			if fc.Char != ' ' || fc.Bold || fc.Fg != (Color{}) || fc.Bg != (Color{}) {
-				s := Style{Foreground: fc.Fg, Background: fc.Bg, Bold: fc.Bold}
-				r.buf.WriteString(s.SGR())
-				r.buf.WriteRune(fc.Char)
-				r.buf.WriteString(s.Reset())
-			} else {
-				r.buf.WriteRune(fc.Char)
+			if rowStart >= 0 {
+				r.flushRowSegment(nil, rect.X+rect.Width, y, rowStart, rect.X+rect.Width-1, rowFg, rowBg, rowAttrs)
 			}
-			r.back.Cells[y][x] = fc
 		}
 	}
 	r.front.hasDirty = false
-	r.back.hasDirty = false
-	return r.buf.String()
+	r.front.dirtyRects = nil
+
+	if r.buf.Len() > 0 {
+		return r.buf.String()
+	}
+	return ""
+}
+
+func (r *Renderer) flushRowSegment(fc *SceneCell, endX, y, startX, segEnd int, fg Color, bg Color, attrs AttrMask) {
+	if startX > segEnd {
+		return
+	}
+	r.buf.WriteString(cursorPos(y, startX))
+	sgr := cachedSGR(fg, bg, attrs)
+	if sgr != "" {
+		r.buf.WriteString(sgr)
+	}
+	for x := startX; x <= segEnd && x < r.width; x++ {
+		c := r.front.Cells[y][x]
+		if c.Char == 0 {
+			r.buf.WriteByte(' ')
+		} else {
+			r.buf.WriteRune(c.Char)
+		}
+		r.back.Cells[y][x].Dirty = false
+	}
+	if attrs != 0 {
+		r.buf.WriteString(ResetAttrs(attrs))
+	}
 }
 
 func cursorPos(row, col int) string {

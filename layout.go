@@ -4,6 +4,18 @@ type Rect struct {
 	X, Y, Width, Height int
 }
 
+func (r Rect) Contains(x, y int) bool {
+	return x >= r.X && x < r.X+r.Width && y >= r.Y && y < r.Y+r.Height
+}
+
+func mergeRects(a, b Rect) Rect {
+	x1 := min(a.X, b.X)
+	y1 := min(a.Y, b.Y)
+	x2 := max(a.X+a.Width, b.X+b.Width)
+	y2 := max(a.Y+a.Height, b.Y+b.Height)
+	return Rect{X: x1, Y: y1, Width: x2 - x1, Height: y2 - y1}
+}
+
 func ComputeLayout(node Node, bounds Rect) {
 	if node == nil {
 		return

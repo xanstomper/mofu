@@ -39,7 +39,7 @@ func (d *DebugOverlay) Render(ctx *RenderContext) {
 		d.stats.TotalCells,
 	)
 	sty := DefaultStyle().Fg(Hex("a6e3a1")).Bg(Hex("1e1e2e"))
-	sty.Bold = true
+	sty.Attrs |= AttrBold
 	r.WriteStyledString(info, 0, 0, sty)
 }
 
