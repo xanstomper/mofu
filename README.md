@@ -27,7 +27,7 @@
   <img src="https://img.shields.io/badge/license-MIT-00FF00?style=for-the-badge" alt="License">
   <img src="https://img.shields.io/badge/version-0.3.0-FF69B4?style=for-the-badge" alt="Version">
   <img src="https://img.shields.io/badge/tests-120%20passing-brightgreen?style=for-the-badge" alt="Tests">
-  <img src="https://img.shields.io/badge/gadgets-112-blueviolet?style=for-the-badge" alt="Gadgets">
+  <img src="https://img.shields.io/badge/gadgets-122-blueviolet?style=for-the-badge" alt="Gadgets">
   <img src="https://img.shields.io/badge/examples-22-orange?style=for-the-badge" alt="Examples">
 </p>
 
