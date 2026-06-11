@@ -7,10 +7,10 @@
 <p align="center">
   <img src="https://img.shields.io/badge/go-1.21+-00ADD8?style=flat-square&logo=go&logoColor=white" alt="Go">
   <img src="https://img.shields.io/badge/license-MIT-00FF00?style=flat-square" alt="License">
-  <img src="https://img.shields.io/badge/version-0.4.0-FF69B4?style=flat-square" alt="Version">
+  <img src="https://img.shields.io/badge/version-0.5.0-FF69B4?style=flat-square" alt="Version">
   <img src="https://img.shields.io/badge/tests-207%20passing-brightgreen?style=flat-square" alt="Tests">
   <img src="https://img.shields.io/badge/gadgets-112-blueviolet?style=flat-square" alt="Gadgets">
-  <img src="https://img.shields.io/badge/examples-23-orange?style=flat-square" alt="Examples">
+  <img src="https://img.shields.io/badge/examples-25-orange?style=flat-square" alt="Examples">
 </p>
 
 ---
@@ -53,6 +53,16 @@ func (c *counter) HandleEvent(e mofu.Event) mofu.Cmd {
 ```bash
 go run main.go
 ```
+
+## Full Demo
+
+Run the interactive showcase with live-updating dashboard, widget demos, todo list, and more:
+
+```bash
+cd demo && go run .
+```
+
+Features: tabbed interface, live metrics, process list, log stream, todo tracker, widget showcase.
 
 ## Why MOFU?
 
