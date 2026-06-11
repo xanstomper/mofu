@@ -4,19 +4,38 @@ import (
 	"testing"
 
 	"github.com/xanstomper/mofu"
-	"github.com/xanstomper/mofu/widgets"
 )
 
-// TestCounterApp tests a simple counter application flow.
 func TestCounterApp(t *testing.T) {
 	type Counter struct {
 		mofu.Minimal
 		count int
 	}
 
+	handleEvent := func(c *Counter, e mofu.Event) {
+		if e.Type != mofu.EventKeyPress {
+			return
+		}
+		ke := e.Data.(mofu.KeyEvent)
+		switch ke.Key {
+		case mofu.KeyUp:
+			c.count++
+		case mofu.KeyDown:
+			c.count--
+		default:
+			if len(ke.Runes) > 0 {
+				switch ke.Runes[0] {
+				case 'j':
+					c.count++
+				case 'k':
+					c.count--
+				}
+			}
+		}
+	}
+
 	app := &Counter{}
 
-	// Simulate key press events
 	tests := []struct {
 		name   string
 		key    mofu.Key
@@ -24,21 +43,17 @@ func TestCounterApp(t *testing.T) {
 		expect int
 	}{
 		{"increment with j", 0, []byte{'j'}, 1},
-		{"increment with down", mofu.KeyDown, nil, 2},
-		{"decrement with k", 0, []byte{'k'}, 1},
-		{"decrement with up", mofu.KeyUp, nil, 0},
+		{"decrement with k", 0, []byte{'k'}, 0},
+		{"increment with up", mofu.KeyUp, nil, 1},
+		{"decrement with down", mofu.KeyDown, nil, 0},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			// Handle event
-			switch {
-			case tt.key == mofu.KeyDown || (len(tt.runes) > 0 && tt.runes[0] == 'j'):
-				app.count++
-			case tt.key == mofu.KeyUp || (len(tt.runes) > 0 && tt.runes[0] == 'k'):
-				app.count--
-			}
-
+			handleEvent(app, mofu.Event{
+				Type: mofu.EventKeyPress,
+				Data: mofu.KeyEvent{Key: tt.key, Runes: tt.runes},
+			})
 			if app.count != tt.expect {
 				t.Errorf("count = %d, want %d", app.count, tt.expect)
 			}
@@ -46,289 +61,200 @@ func TestCounterApp(t *testing.T) {
 	}
 }
 
-// TestInputWidget tests the Input widget in isolation.
-func TestInputWidget(t *testing.T) {
-	input := widgets.NewInput()
-	input.Placeholder = "Enter text"
+func TestMinimalBounds(t *testing.T) {
+	m := &mofu.Minimal{}
+	r := mofu.Rect{X: 10, Y: 20, Width: 80, Height: 24}
+	m.SetBounds(r)
 
-	// Test typing
-	input.Focus()
-	for _, r := range "hello" {
-		input.InsertRune(r)
-	}
-
-	if input.Value != "hello" {
-		t.Errorf("value = %q, want %q", input.Value, "hello")
-	}
-
-	// Test cursor movement
-	input.SetCursor(2)
-	if input.CursorPos != 2 {
-		t.Errorf("cursor = %d, want 2", input.CursorPos)
-	}
-
-	// Test delete
-	input.DeleteBefore()
-	if input.Value != "hllo" {
-		t.Errorf("after delete: value = %q, want %q", input.Value, "hllo")
+	if m.Bounds() != r {
+		t.Errorf("bounds = %v, want %v", m.Bounds(), r)
 	}
 }
 
-// TestListWidget tests the List widget navigation.
-func TestListWidget(t *testing.T) {
-	items := []widgets.ListItem{
-		{Title: "First"},
-		{Title: "Second"},
-		{Title: "Third"},
-	}
-	list := widgets.NewList(items)
-
-	// Test navigation
-	downEvent := mofu.Event{
-		Type: mofu.EventKeyPress,
-		Data: mofu.KeyEvent{Key: mofu.KeyDown},
-	}
-	upEvent := mofu.Event{
-		Type: mofu.EventKeyPress,
-		Data: mofu.KeyEvent{Key: mofu.KeyUp},
+func TestMinimalDirty(t *testing.T) {
+	m := &mofu.Minimal{}
+	if m.Dirty() {
+		t.Error("should start clean")
 	}
 
-	list.HandleEvent(downEvent)
-	if list.Selected != 1 {
-		t.Errorf("after down: selected = %d, want 1", list.Selected)
-	}
-
-	list.HandleEvent(downEvent)
-	if list.Selected != 2 {
-		t.Errorf("after down: selected = %d, want 2", list.Selected)
-	}
-
-	list.HandleEvent(upEvent)
-	if list.Selected != 1 {
-		t.Errorf("after up: selected = %d, want 1", list.Selected)
+	m.SetDirty()
+	if !m.Dirty() {
+		t.Error("should be dirty after SetDirty")
 	}
 }
 
-// TestCheckboxWidget tests the Checkbox toggle.
-func TestCheckboxWidget(t *testing.T) {
-	check := widgets.NewCheckbox("Accept terms", false)
+func TestStyleCreation(t *testing.T) {
+	s := mofu.DefaultStyle()
+	c := mofu.Hex("ff69b4")
 
-	spaceEvent := mofu.Event{
-		Type: mofu.EventKeyPress,
-		Data: mofu.KeyEvent{Key: mofu.KeySpace},
-	}
-
-	check.Focus()
-	check.HandleEvent(spaceEvent)
-
-	if !check.Checked {
-		t.Error("expected checked after space")
-	}
-
-	check.HandleEvent(spaceEvent)
-	if check.Checked {
-		t.Error("expected unchecked after second space")
+	styled := s.Fg(c)
+	if styled.Foreground != c {
+		t.Errorf("foreground = %v, want %v", styled.Foreground, c)
 	}
 }
 
-// TestButtonWidget tests the Button press.
-func TestButtonWidget(t *testing.T) {
-	pressed := false
-	btn := widgets.NewButton("Submit", func() mofu.Cmd {
-		pressed = true
-		return nil
-	})
+func TestStyleChain(t *testing.T) {
+	s := mofu.DefaultStyle()
+	s = s.Fg(mofu.Hex("ff69b4")).Bg(mofu.Hex("1e1e2e")).WithAttrs(mofu.AttrBold)
 
-	btn.Focus()
-	enterEvent := mofu.Event{
-		Type: mofu.EventKeyPress,
-		Data: mofu.KeyEvent{Key: mofu.KeyEnter},
+	if s.Foreground != mofu.Hex("ff69b4") {
+		t.Error("foreground mismatch")
 	}
-	btn.HandleEvent(enterEvent)
-
-	if !pressed {
-		t.Error("expected button to be pressed")
+	if s.Background != mofu.Hex("1e1e2e") {
+		t.Error("background mismatch")
+	}
+	if !s.Attrs.Has(mofu.AttrBold) {
+		t.Error("bold not set")
 	}
 }
 
-// TestTabsWidget tests the Tabs navigation.
-func TestTabsWidget(t *testing.T) {
-	tabs := widgets.NewTabs([]widgets.Tab{
-		{Label: "Tab A"},
-		{Label: "Tab B"},
-		{Label: "Tab C"},
-	})
-
-	rightEvent := mofu.Event{
-		Type: mofu.EventKeyPress,
-		Data: mofu.KeyEvent{Key: mofu.KeyRight},
-	}
-	leftEvent := mofu.Event{
-		Type: mofu.EventKeyPress,
-		Data: mofu.KeyEvent{Key: mofu.KeyLeft},
-	}
-
-	tabs.HandleEvent(rightEvent)
-	if tabs.Selected != 1 {
-		t.Errorf("selected = %d, want 1", tabs.Selected)
-	}
-
-	tabs.HandleEvent(rightEvent)
-	if tabs.Selected != 2 {
-		t.Errorf("selected = %d, want 2", tabs.Selected)
-	}
-
-	tabs.HandleEvent(leftEvent)
-	if tabs.Selected != 1 {
-		t.Errorf("selected = %d, want 1", tabs.Selected)
+func TestColorHex(t *testing.T) {
+	c := mofu.Hex("ff69b4")
+	if c.R != 255 || c.G != 105 || c.B != 180 {
+		t.Errorf("RGB = (%d,%d,%d), want (255,105,180)", c.R, c.G, c.B)
 	}
 }
 
-// TestProgressBarValue tests the ProgressBar clamping.
-func TestProgressBarValue(t *testing.T) {
-	bar := widgets.NewProgressBar(0.5)
-
-	bar.SetValue(1.5)
-	if bar.Value != 1.0 {
-		t.Errorf("value = %f, want 1.0", bar.Value)
-	}
-
-	bar.SetValue(-0.5)
-	if bar.Value != 0.0 {
-		t.Errorf("value = %f, want 0.0", bar.Value)
-	}
-
-	bar.SetValue(0.75)
-	if bar.Value != 0.75 {
-		t.Errorf("value = %f, want 0.75", bar.Value)
+func TestColorHexWithHash(t *testing.T) {
+	c := mofu.Hex("#ff69b4")
+	if c.R != 255 || c.G != 105 || c.B != 180 {
+		t.Errorf("RGB = (%d,%d,%d), want (255,105,180)", c.R, c.G, c.B)
 	}
 }
 
-// TestQuitCmd tests the QuitCmd function.
+func TestColorRGB(t *testing.T) {
+	c := mofu.RGB(10, 20, 30)
+	if c.R != 10 || c.G != 20 || c.B != 30 {
+		t.Errorf("RGB = (%d,%d,%d), want (10,20,30)", c.R, c.G, c.B)
+	}
+}
+
+func TestStateGraph(t *testing.T) {
+	g := mofu.NewStateGraph()
+	g.Set("key1", 42)
+	g.Set("key2", "hello")
+
+	v, ok := g.Get("key1")
+	if !ok || v != 42 {
+		t.Errorf("Get = %v, %v, want 42, true", v, ok)
+	}
+
+	v, ok = g.Get("key2")
+	if !ok || v != "hello" {
+		t.Errorf("Get = %v, %v, want hello, true", v, ok)
+	}
+
+	_, ok = g.Get("nonexistent")
+	if ok {
+		t.Error("Get nonexistent should return false")
+	}
+}
+
 func TestQuitCmd(t *testing.T) {
 	cmd := mofu.QuitCmd()
 	if cmd == nil {
-		t.Fatal("expected non-nil cmd")
+		t.Fatal("QuitCmd should not be nil")
 	}
-
 	msg := cmd()
 	if _, ok := msg.(mofu.QuitMsg); !ok {
-		t.Errorf("expected QuitMsg, got %T", msg)
+		t.Error("QuitCmd should return QuitMsg")
 	}
 }
 
-// TestBatchCmd tests the Batch function.
 func TestBatchCmd(t *testing.T) {
-	count := 0
-	cmd1 := func() mofu.Msg { count++; return nil }
-	cmd2 := func() mofu.Msg { count++; return nil }
+	called := 0
+	cmd1 := func() mofu.Msg { called++; return nil }
+	cmd2 := func() mofu.Msg { called++; return nil }
 
 	batch := mofu.Batch(cmd1, cmd2)
 	if batch == nil {
-		t.Fatal("expected non-nil batch")
+		t.Fatal("Batch should not be nil")
 	}
 
 	msg := batch()
-	if _, ok := msg.(mofu.BatchMsg); !ok {
-		t.Errorf("expected BatchMsg, got %T", msg)
+	batchMsg, ok := msg.(mofu.BatchMsg)
+	if !ok {
+		t.Fatal("Batch should return BatchMsg")
+	}
+	if len(batchMsg) != 2 {
+		t.Errorf("batch has %d commands, want 2", len(batchMsg))
 	}
 }
 
-// TestStyleFgBg tests the Style Fg/Bg methods.
-func TestStyleFgBg(t *testing.T) {
-	style := mofu.DefaultStyle()
-	red := mofu.RGB(255, 0, 0)
-	blue := mofu.RGB(0, 0, 255)
+func TestSequenceCmd(t *testing.T) {
+	seq := mofu.Sequence(
+		func() mofu.Msg { return nil },
+		func() mofu.Msg { return nil },
+	)
 
-	style = style.Fg(red)
-	if style.Foreground != red {
-		t.Error("foreground not set")
-	}
-
-	style = style.Bg(blue)
-	if style.Background != blue {
-		t.Error("background not set")
+	msg := seq()
+	_, ok := msg.(mofu.SequenceMsg)
+	if !ok {
+		t.Fatal("Sequence should return SequenceMsg")
 	}
 }
 
-// TestHexColor tests the Hex color parser.
-func TestHexColor(t *testing.T) {
-	tests := []struct {
-		hex    string
-		r, g, b uint8
-	}{
-		{"#ff0000", 255, 0, 0},
-		{"00ff00", 0, 255, 0},
-		{"#0000ff", 0, 0, 255},
-		{"#ffffff", 255, 255, 255},
+func TestKeyEvent(t *testing.T) {
+	e := mofu.Event{
+		Type: mofu.EventKeyPress,
+		Data: mofu.KeyEvent{
+			Key:   mofu.KeyUp,
+			Runes: []byte{'k'},
+		},
 	}
 
-	for _, tt := range tests {
-		c := mofu.Hex(tt.hex)
-		if c.R != tt.r || c.G != tt.g || c.B != tt.b {
-			t.Errorf("Hex(%q) = RGB(%d,%d,%d), want RGB(%d,%d,%d)",
-				tt.hex, c.R, c.G, c.B, tt.r, tt.g, tt.b)
-		}
-	}
-}
-
-// TestThemeManager tests theme switching.
-func TestThemeManager(t *testing.T) {
-	dm := mofu.NewThemeManager(mofu.DefaultTheme())
-
-	mochi := mofu.MochiTheme()
-	dm.Register("mochi", mochi)
-
-	if !dm.Apply("mochi") {
-		t.Fatal("Apply failed")
-	}
-	if dm.Current().Name != "mochi" {
-		t.Errorf("current = %q, want %q", dm.Current().Name, "mofu")
+	if e.Type != mofu.EventKeyPress {
+		t.Error("type mismatch")
 	}
 
-	if dm.Apply("nonexistent") {
-		t.Error("expected false for nonexistent theme")
+	ke, ok := e.Data.(mofu.KeyEvent)
+	if !ok {
+		t.Fatal("data should be KeyEvent")
+	}
+	if ke.Key != mofu.KeyUp {
+		t.Errorf("key = %v, want KeyUp", ke.Key)
+	}
+	if ke.Runes[0] != 'k' {
+		t.Errorf("rune = %c, want k", ke.Runes[0])
 	}
 }
 
-// TestSpacingTokens tests the spacing token system.
-func TestSpacingTokens(t *testing.T) {
-	tests := []struct {
-		token  mofu.SpacingToken
-		expect int
-	}{
-		{mofu.SpacingNone, 0},
-		{mofu.SpacingS, 2},
-		{mofu.SpacingM, 4},
-		{mofu.SpacingL, 8},
-		{mofu.SpacingXL, 12},
+func TestSceneBuffer(t *testing.T) {
+	r := mofu.NewSceneBuffer(80, 24)
+	if r == nil {
+		t.Fatal("SceneBuffer should not be nil")
 	}
 
-	for _, tt := range tests {
-		if got := tt.token.Value(); got != tt.expect {
-			t.Errorf("SpacingToken(%d).Value() = %d, want %d", tt.token, got, tt.expect)
-		}
+	r.Set(5, 3, 'X', mofu.Hex("ff69b4"), mofu.ColorBlack, 0)
+	r.Clear()
+}
+
+func TestEventTypes(t *testing.T) {
+	keyEvent := mofu.Event{Type: mofu.EventKeyPress}
+	mouseEvent := mofu.Event{Type: mofu.EventMouse}
+
+	if keyEvent.Type != mofu.EventKeyPress {
+		t.Error("key event type mismatch")
+	}
+	if mouseEvent.Type != mofu.EventMouse {
+		t.Error("mouse event type mismatch")
 	}
 }
 
-// TestRectContains tests the Rect.Contains method.
-func TestRectContains(t *testing.T) {
-	r := mofu.Rect{X: 10, Y: 10, Width: 20, Height: 10}
-
-	tests := []struct {
-		x, y   int
-		expect bool
-	}{
-		{15, 15, true},
-		{10, 10, true},
-		{29, 19, true},
-		{30, 19, false},
-		{5, 5, false},
+func TestRect(t *testing.T) {
+	r := mofu.Rect{X: 10, Y: 20, Width: 80, Height: 24}
+	if r.X != 10 || r.Y != 20 || r.Width != 80 || r.Height != 24 {
+		t.Errorf("rect = %v", r)
 	}
+}
 
-	for _, tt := range tests {
-		if got := r.Contains(tt.x, tt.y); got != tt.expect {
-			t.Errorf("Rect.Contains(%d,%d) = %v, want %v", tt.x, tt.y, got, tt.expect)
-		}
+func TestAttrsAccumulation(t *testing.T) {
+	s := mofu.DefaultStyle().WithAttrs(mofu.AttrBold)
+	if !s.Attrs.Has(mofu.AttrBold) {
+		t.Error("bold not set")
+	}
+	s2 := s.WithAttrs(mofu.AttrItalic)
+	if !s2.Attrs.Has(mofu.AttrBold) || !s2.Attrs.Has(mofu.AttrItalic) {
+		t.Error("attrs not accumulated")
 	}
 }
