@@ -673,11 +673,13 @@ func (g *ResponsiveLayoutCore) Render(state StateView) []RenderNode {
 // =========================================================================
 
 type FormField struct {
-	Name     string
-	Label    string
-	Type     string
-	Value    any
-	Required bool
+	Name        string
+	Label       string
+	Type        string
+	Value       any
+	Required    bool
+	Validator   func(any) error
+	Placeholder string
 }
 
 type SmartForm struct {
