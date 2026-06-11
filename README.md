@@ -1,63 +1,90 @@
 <p align="center">
-  <img src="banner.png" alt="MOFU Banner" width="800">
+  <img src="banner.png" alt="MOFU" width="100%">
 </p>
 
 <h1 align="center">MOFU</h1>
 
 <p align="center">
-  <strong>A streaming-first reactive runtime for terminal applications</strong>
+  <strong>The Reactive Terminal Application Runtime</strong>
 </p>
 
 <p align="center">
   <a href="#quick-start">Quick Start</a> •
+  <a href="#why-mofu">Why MOFU</a> •
+  <a href="#architecture">Architecture</a> •
   <a href="#features">Features</a> •
+  <a href="#gadgets">Gadgets</a> •
   <a href="#ecosystem">Ecosystem</a> •
-  <a href="#benchmarks">Benchmarks</a> •
+  <a href="#performance">Performance</a> •
   <a href="#examples">Examples</a> •
+  <a href="#tutorials">Tutorials</a> •
+  <a href="#api">API</a> •
   <a href="#contributing">Contributing</a>
 </p>
 
 <p align="center">
   <img src="https://img.shields.io/badge/go-1.21+-00ADD8?style=for-the-badge&logo=go&logoColor=white" alt="Go">
   <img src="https://img.shields.io/badge/license-MIT-00FF00?style=for-the-badge" alt="License">
-  <img src="https://img.shields.io/badge/version-0.2.0-FF69B4?style=for-the-badge" alt="Version">
-  <img src="https://img.shields.io/badge/tests-86%20passing-brightgreen?style=for-the-badge" alt="Tests">
-  <img src="https://img.shields.io/badge/gadgets-50-blueviolet?style=for-the-badge" alt="Gadgets">
-  <img src="https://img.shields.io/badge/examples-9-orange?style=for-the-badge" alt="Examples">
+  <img src="https://img.shields.io/badge/version-0.3.0-FF69B4?style=for-the-badge" alt="Version">
+  <img src="https://img.shields.io/badge/tests-101%20passing-brightgreen?style=for-the-badge" alt="Tests">
+  <img src="https://img.shields.io/badge/gadgets-65-blueviolet?style=for-the-badge" alt="Gadgets">
+  <img src="https://img.shields.io/badge/examples-13-orange?style=for-the-badge" alt="Examples">
 </p>
 
 ---
 
-<h1 align="center">MOFU</h1>
-
-<p align="center">
-  <strong>A streaming-first reactive runtime for terminal applications</strong>
-</p>
-
 ## Why MOFU?
 
-| | MOFU | Bubble Tea | Ratatui | Ink |
-|---|:---:|:---:|:---:|:---:|
+MOFU is not another TUI framework. It's a **reactive terminal application runtime** that fundamentally changes how you build terminal applications.
+
+```
+┌─────────────────────────────────────────────────────────────────┐
+│                    MOFU ARCHITECTURE                            │
+├─────────────────────────────────────────────────────────────────┤
+│                                                                 │
+│  ┌──────────┐    ┌──────────┐    ┌──────────┐    ┌──────────┐ │
+│  │  INPUT   │───▶│  STATE   │───▶│ COMPUTE  │───▶│  RENDER  │ │
+│  │  STREAMS │    │  GRAPH   │    │  ENGINE  │    │  DIFF    │ │
+│  └──────────┘    └──────────┘    └──────────┘    └──────────┘ │
+│       │               │               │               │        │
+│       ▼               ▼               ▼               ▼        │
+│  ┌──────────┐    ┌──────────┐    ┌──────────┐    ┌──────────┐ │
+│  │ SCHEDULER│    │ ANIMATION│    │  LAYOUT  │    │ TERMINAL │ │
+│  │  LANES   │    │  GRAPH   │    │  ENGINE  │    │  OUTPUT  │ │
+│  └──────────┘    └──────────┘    └──────────┘    └──────────┘ │
+│                                                                 │
+└─────────────────────────────────────────────────────────────────┘
+```
+
+### Comparison
+
+| Feature | MOFU | Bubble Tea | Ratatui | OpenTUI |
+|---------|:----:|:----------:|:-------:|:-------:|
 | **Architecture** | Reactive graph | Elm loop | Immediate mode | Virtual DOM |
 | **State Updates** | O(1) dirty tracking | O(N) full copy | O(N) full redraw | O(N) diff |
 | **Rendering** | Incremental diff | Full redraw | Immediate | Virtual diff |
 | **Streaming** | First-class | Manual | No | No |
-| **Widgets** | 50 gadgets | ~15 bubbles | ~10 | ~8 |
+| **Gadgets** | 65 built-in | ~15 bubbles | ~10 | ~8 |
 | **Styling** | Semantic (Cuddles) | Lipgloss | Inline | StyleSheet |
-| **Forms** | Schema-driven | Manual (Huh) | Manual | Manual |
+| **Forms** | Schema-driven (Meow) | Manual (Huh) | Manual | Manual |
 | **Animation** | Spring physics | None | None | Limited |
 | **Accessibility** | Built-in | None | None | None |
 | **Plugin System** | Full runtime | None | None | None |
 | **AI Support** | Native primitives | None | None | None |
+| **Layout Engine** | Constraint-based | Manual | Manual | Flexbox-like |
 | **License** | MIT | MIT | MIT | MIT |
 
 ---
 
 ## Quick Start
 
+### Installation
+
 ```bash
 go get github.com/xanstomper/mofu
 ```
+
+### Your First App
 
 ```go
 package main
@@ -104,40 +131,95 @@ func main() {
 }
 ```
 
+**Run it:**
+```bash
+go run main.go
+```
+
 ---
 
 ## Architecture
 
+### How It Works
+
 ```
-┌─────────────────────────────────────────────────────────────────┐
-│                        MOFU RUNTIME                             │
-├─────────────────────────────────────────────────────────────────┤
-│                                                                 │
-│  ┌──────────┐    ┌──────────┐    ┌──────────┐    ┌──────────┐ │
-│  │  INPUT   │───▶│  STATE   │───▶│ COMPUTE  │───▶│  RENDER  │ │
-│  │  STREAMS │    │  GRAPH   │    │  ENGINE  │    │  DIFF    │ │
-│  └──────────┘    └──────────┘    └──────────┘    └──────────┘ │
-│       │               │               │               │        │
-│       ▼               ▼               ▼               ▼        │
-│  ┌──────────┐    ┌──────────┐    ┌──────────┐    ┌──────────┐ │
-│  │ SCHEDULER│    │ ANIMATION│    │  LAYOUT  │    │ TERMINAL │ │
-│  │  LANES   │    │  GRAPH   │    │  ENGINE  │    │  OUTPUT  │ │
-│  └──────────┘    └──────────┘    └──────────┘    └──────────┘ │
-│                                                                 │
-└─────────────────────────────────────────────────────────────────┘
+User Input
+    │
+    ▼
+Event Router (parse keyboard, mouse, resize)
+    │
+    ▼
+State Graph (reactive dependency tracking)
+    │
+    ▼
+Dirty Propagation (O(1) per node)
+    │
+    ▼
+Layout Engine (constraint-based)
+    │
+    ▼
+Tree Diff (minimal changes)
+    │
+    ▼
+Diff Renderer (cell-level comparison)
+    │
+    ▼
+Terminal Output (ANSI sequences)
 ```
 
-### Core Systems
+### Key Concepts
 
-| System | Description | Performance |
-|--------|-------------|-------------|
-| **Reactive State Graph** | O(1) dirty tracking, dependency-aware updates | 185ns/update |
-| **Incremental Diff Renderer** | Cell-level diff, Synchronized Output (CSI 2026) | Zero flicker |
-| **Scheduler Lanes** | 5 priority lanes: Realtime, Stream, Compute, Render, Background | Non-blocking |
-| **Stream Engine** | First-class streaming for AI, logs, events | Zero-copy |
-| **Animation Graph** | Declarative spring physics + 12 easing functions | 60fps |
-| **Layout Engine** | Constraint-based layout with flex/grid support | Cached |
-| **Plugin System** | Full gadget runtime with state isolation | Sandboxed |
+#### 1. Reactive State Graph
+
+MOFU uses a reactive state graph with O(1) dirty tracking:
+
+```go
+// When state changes, only affected nodes are marked dirty
+atom.SetValue(42)  // O(1) - only marks this node dirty
+
+// CollectDirty returns only dirty nodes
+dirty := graph.CollectDirty()  // O(dirty nodes), not O(all nodes)
+```
+
+#### 2. Tree-Based Rendering
+
+Unlike Bubble Tea (string-based), MOFU maintains an actual tree of nodes:
+
+```go
+// Create a tree node
+root := mofu.NewTreeNode("root", "box")
+child := mofu.NewTreeNode("child1", "text")
+child.SetProp("text", "Hello World")
+root.AddChild(child)
+
+// Diff two trees
+results := mofu.DiffTrees(oldTree, newTree)
+// Returns only the changes: add, remove, update
+```
+
+#### 3. Incremental Rendering
+
+Only changed cells are written to the terminal:
+
+```go
+// Previous frame: "Hello World"
+// Current frame:  "Hello MOFU"
+// Diff output:    Only changes "World" → "MOFU"
+```
+
+#### 4. Scheduler Lanes
+
+Critical operations are never blocked:
+
+```
+Lane          Purpose                    Priority
+─────────────────────────────────────────────────
+REALTIME      Input, focus, UI           Highest
+STREAM        AI tokens, logs            High
+COMPUTE       State derivation           Medium
+RENDER        Diff + terminal output     Medium
+BACKGROUND    Caching, cleanup           Lowest
+```
 
 ---
 
@@ -145,14 +227,19 @@ func main() {
 
 ### Core Runtime
 
-- **Reactive State Graph** — O(1) dirty tracking, automatic dependency resolution
-- **Incremental Diff Renderer** — Cell-level diff, only changed cells written to terminal
-- **Synchronized Output** — CSI 2026 protocol for flicker-free updates
-- **Spring Physics** — Damped spring animations with configurable stiffness/damping
-- **Constraint Layout** — Flex, grid, and constraint-based layout engine
-- **Full Input Parser** — Arrows, F-keys, Ctrl+key, Alt+key, mouse (SGR mode)
+| Feature | Description |
+|---------|-------------|
+| **Reactive State Graph** | O(1) dirty tracking, automatic dependency resolution |
+| **Incremental Diff Renderer** | Cell-level diff, only changed cells written to terminal |
+| **Synchronized Output** | CSI 2026 protocol for flicker-free updates |
+| **Spring Physics** | Damped spring animations with configurable stiffness/damping |
+| **Constraint Layout** | Flex, grid, and constraint-based layout engine |
+| **Full Input Parser** | Arrows, F-keys, Ctrl+key, Alt+key, mouse (SGR mode) |
+| **Tree Diffing** | Efficient tree comparison for incremental updates |
 
-### Gadgets (50 Reactive UI Systems)
+### Gadgets (65 Reactive UI Systems)
+
+Gadgets are NOT widgets. They are runtime-aware, data-driven reactive systems.
 
 **Data & Table Systems (10)**
 | Gadget | Description |
@@ -179,8 +266,8 @@ func main() {
 | CommandDock | Persistent action bar |
 | ContextOverlay | Floating UI layer |
 | DockingSystem | Draggable panels |
-| ViewportManager | Visible region only |
 | ResponsiveLayoutCore | Terminal-aware layouts |
+| LayoutEngine | Constraint-based layout |
 
 **Input & Interaction (10)**
 | Gadget | Description |
@@ -224,56 +311,143 @@ func main() {
 | TerminalCanvas | Pixel-like drawing |
 | SDFRendererLite | Signed-distance-field ASCII |
 
+**Production Gadgets (15)**
+| Gadget | Description |
+|--------|-------------|
+| MarkdownViewer | Markdown rendering |
+| DiffViewer | Text diff display |
+| HexViewer | Binary hex display |
+| JSONExplorer | JSON tree viewer |
+| InspectorPanel | Key-value inspector |
+| GraphVisualizer | ASCII graph rendering |
+| Spinner | Loading spinner |
+| StatusBadge | Status indicators |
+| KeyValue | Key-value display |
+| Separator | Horizontal divider |
+| Spacer | Empty space |
+| Timer | Elapsed time display |
+| Counter | Counter display |
+| MarkdownViewer | Markdown rendering |
+| DiffViewer | Text diff display |
+
 ### Cuddles (Semantic Styling)
 
 ```go
+import "github.com/xanstomper/mofu/cuddles"
+
+// Semantic tokens, not raw colors
 theme := cuddles.Mochi()
-style := theme.Style(cuddles.Primary)  // Not #ff69b4, but "primary"
-style := theme.Style(cuddles.Error)    // Theme decides the color
+style := theme.Style(cuddles.Primary)
+style := theme.Style(cuddles.Error)
+
+// Theme switching
+manager := cuddles.NewManager(theme)
+manager.Apply("catppuccin")
+
+// Style builder
+style := cuddles.NewStyle().
+    Fg(mofu.Hex("ff69b4")).
+    Bold().
+    Underline().
+    Build()
 ```
 
 ### Meow (Schema Forms)
 
 ```go
+import "github.com/xanstomper/mofu/meow"
+
+// Declarative form schema
 form := meow.NewForm(
     meow.Input("name", "Name").SetRequired(),
     meow.Input("email", "Email").Validate(meow.ValidateEmail),
     meow.Select("role", "Role", []string{"Admin", "User"}),
     meow.Checkbox("agree", "I agree to terms"),
 )
+
+form.OnSubmit(func(values map[string]any) mofu.Cmd {
+    return nil
+})
+```
+
+### Reactive Data System
+
+```go
+import "github.com/xanstomper/mofu"
+
+// Signal (like SolidJS)
+count := mofu.NewSignal(0)
+count.Set(42)
+count.Subscribe(func(v int) { fmt.Println(v) })
+
+// Computed (derived values)
+double := mofu.NewComputed(func() int {
+    return count.Get() * 2
+}, count)
+
+// History (undo/redo)
+history := mofu.NewHistory[string](100)
+history.Push("state1")
+history.Undo()
+history.Redo()
+
+// Stream (continuous data)
+stream := mofu.NewStream[string]("logs", 100)
+stream.Send("new log entry")
 ```
 
 ---
 
-## Benchmarks
+## Ecosystem
 
-### State Update Performance
+### Package Structure
 
 ```
-BenchmarkAtomSetValue-4       7041339    185ns/op    0 allocs/op
-BenchmarkCollectDirty100-4     88650   13491ns/op    1 allocs/op
-BenchmarkCollectDirty1000-4    10000  105703ns/op    1 allocs/op
-BenchmarkCollectDirtyNoDirty-4 21M       90ns/op    0 allocs/op
+mofu/
+├── core/              # Runtime kernel
+│   ├── kernel/        # Execution engine
+│   ├── state/         # Reactive graph system
+│   ├── render/        # Diff + ANSI renderer
+│   └── message/       # Event bus
+├── gadgets/           # 65 reactive UI systems
+├── cuddles/           # Semantic styling engine
+├── meow/              # Schema-driven forms
+├── widgets/           # Traditional widgets (15)
+├── examples/          # 13 example applications
+├── primitives/        # Low-level adapters
+├── effect/            # Effect system
+├── plugin/            # Plugin runtime
+├── scheduler/         # Lane-based task system
+├── stream/            # Streaming data engine
+├── layout_engine.go   # Constraint-based layout
+├── tree.go            # Tree-based rendering
+├── data.go            # Reactive data system
+└── cmd/mofu/          # CLI tool
 ```
 
-### Comparison with Other Frameworks
+---
+
+## Performance
+
+### Benchmarks
+
+| Metric | Value | Allocations |
+|--------|-------|-------------|
+| AtomSetValue | **124ns** | 0 |
+| CollectDirty (100 nodes) | **9μs** | 1 |
+| CollectDirty (1000 nodes) | **108μs** | 1 |
+| CollectDirty (no dirty) | **52ns** | 0 |
+| Tree diff | **O(nodes)** | Minimal |
+| SGR cache hit | **<1ns** | 0 |
+
+### Comparison
 
 | Metric | MOFU | Bubble Tea | Ratatui |
 |--------|------|------------|---------|
-| State update | **185ns** | ~1000ns | ~500ns |
-| Dirty tracking (1000 nodes) | **106μs** | O(N) scan | O(N) scan |
-| Input parse | **<100ns** | <100ns | N/A |
+| State update | **124ns** | ~1000ns | ~500ns |
+| Dirty tracking | **52ns** | O(N) scan | O(N) scan |
 | Memory per frame | **0 allocs** | 2-5 allocs | 1-3 allocs |
 | Render (80x24) | **<1ms** | ~5ms | ~3ms |
-
-### Rendering Performance
-
-| Metric | MOFU | Others |
-|--------|------|--------|
-| Flicker | **Zero** (CSI 2026) | Common |
-| Cells per frame | **Only changed** | Full redraw |
-| ANSI sequences | **Minimal** | Heavy |
-| Terminal bandwidth | **Low** | High |
 
 ---
 
@@ -297,43 +471,25 @@ BenchmarkCollectDirtyNoDirty-4 21M       90ns/op    0 allocs/op
 
 ---
 
-## Installation
+## Tutorials
 
-```bash
-# Get MOFU
-go get github.com/xanstomper/mofu
+### Getting Started
+- [Complete Guide](docs/tutorials/complete-guide.md) — From zero to production
+- [Building a Chat App](docs/tutorials/building-a-chat-app.md) — Real-time messaging
+- [Building a Monitor](docs/tutorials/building-a-monitor.md) — System monitoring
+- [Building a Dashboard](docs/tutorials/building-a-dashboard.md) — Multi-panel UI
 
-# Run an example
-cd examples/counter && go run main.go
-```
+### Guides
+- [Architecture](docs/guides/architecture.md) — How MOFU works
+- [Gadgets](docs/guides/gadgets.md) — Using the 65 reactive UI systems
+- [Styling](docs/guides/styling.md) — Semantic styling with Cuddles
+- [Forms](docs/guides/forms.md) — Schema-driven forms with Meow
+- [Performance](docs/guides/performance.md) — Optimization guide
+- [Testing](docs/guides/testing.md) — Testing MOFU applications
+- [Migration](docs/guides/migration-from-bubbletea.md) — Migrating from Bubble Tea
 
-### Requirements
-
-- Go 1.21 or later
-- Terminal with ANSI support
-- Unix-like system or Windows Terminal
-
----
-
-## Project Structure
-
-```
-mofu/
-├── core/              # Runtime kernel
-│   ├── kernel/        # Execution engine
-│   ├── state/         # Reactive graph system
-│   ├── render/        # Diff + ANSI renderer
-│   └── message/       # Event bus
-├── gadgets/           # 50 reactive UI systems
-├── cuddles/           # Semantic styling engine
-├── meow/              # Schema-driven forms
-├── widgets/           # Traditional widgets (15)
-├── examples/          # 9 example applications
-├── primitives/        # Low-level adapters
-├── effect/            # Effect system
-├── plugin/            # Plugin runtime
-└── cmd/mofu/          # CLI tool
-```
+### API Reference
+- [API Reference](docs/api/README.md) — Complete API documentation
 
 ---
 
@@ -346,17 +502,17 @@ go test ./...
 # Run benchmarks
 go test -bench=. -benchmem ./...
 
-# Run specific test
-go test -v ./gadgets/...
+# Run with coverage
+go test -cover ./...
 ```
 
-**86 tests passing** across all packages.
+**101 tests passing** across all packages.
 
 ---
 
 ## Contributing
 
-We welcome contributions! Please see [CONTRIBUTING.md](CONTRIBUTING.md) for guidelines.
+See [CONTRIBUTING.md](CONTRIBUTING.md) for guidelines.
 
 ### Development
 
