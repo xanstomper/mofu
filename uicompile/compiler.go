@@ -1,8 +1,8 @@
 package uicompile
 
 import (
-	"github.com/anomalyco/mofu"
-	"github.com/anomalyco/mofu/state"
+	"github.com/xanstomper/mofu"
+	"github.com/xanstomper/mofu/state"
 )
 
 type Compiler struct {

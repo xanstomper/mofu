@@ -3,7 +3,7 @@ package widgets
 import (
 	"strings"
 
-	"github.com/anomalyco/mofu"
+	"github.com/xanstomper/mofu"
 )
 
 type TextNode struct {

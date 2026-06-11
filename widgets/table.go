@@ -2,9 +2,8 @@ package widgets
 
 import (
 	"sort"
-	"strings"
 
-	"github.com/anomalyco/mofu"
+	"github.com/xanstomper/mofu"
 )
 
 type Column struct {
@@ -44,6 +43,19 @@ func (t *Table) AddRow(values ...string) {
 		}
 	}
 	t.Rows = append(t.Rows, row)
+	t.clamp()
+	t.SetDirty()
+}
+
+func (t *Table) SetRows(rows [][]string) {
+	t.Rows = rows
+	t.clamp()
+	t.SetDirty()
+}
+
+func (t *Table) SetColumns(columns []Column) {
+	t.Columns = columns
+	t.clamp()
 	t.SetDirty()
 }
 
@@ -52,6 +64,40 @@ func (t *Table) Clear() {
 	t.Selected = -1
 	t.Offset = 0
 	t.SetDirty()
+}
+
+func (t *Table) clamp() {
+	if len(t.Rows) == 0 {
+		t.Selected = -1
+		t.Offset = 0
+		return
+	}
+	if t.Selected < 0 {
+		t.Selected = 0
+	}
+	if t.Selected >= len(t.Rows) {
+		t.Selected = len(t.Rows) - 1
+	}
+	if t.Offset < 0 {
+		t.Offset = 0
+	}
+	if t.Offset > t.Selected {
+		t.Offset = t.Selected
+	}
+	if h := t.visibleHeight(); h > 0 && t.Selected-t.Offset >= h {
+		t.Offset = t.Selected - h + 1
+	}
+	if t.Offset < 0 {
+		t.Offset = 0
+	}
+}
+
+func (t *Table) visibleHeight() int {
+	h := t.BaseNode.Bounds().Height - 1
+	if h <= 0 {
+		return 1
+	}
+	return h
 }
 
 func (t *Table) SortBy(col int) {
@@ -83,44 +129,27 @@ func (t *Table) SortBy(col int) {
 
 func (t *Table) Render(ctx *mofu.RenderContext) {
 	b := t.BaseNode.Bounds()
-	r := ctx.Renderer
+	if b.Width <= 0 || b.Height <= 0 || len(t.Columns) == 0 {
+		return
+	}
+	t.clamp()
 
-	totalW := 0
-	for i, col := range t.Columns {
-		w := col.Width
-		if w <= 0 {
-			w = 10
-		}
-		if i == len(t.Columns)-1 {
-			remaining := b.Width - totalW
-			if remaining > w {
-				w = remaining
-			}
-		}
-		totalW += w + 1
+	widths := t.columnWidths(b.Width)
+	if len(widths) == 0 {
+		return
 	}
-	if totalW > b.Width {
-		totalW = b.Width
-	}
+	r := ctx.Renderer
+	headerStyle := ctx.Theme.Typography.Label
+	bodyStyle := ctx.Theme.Typography.Body
+	selectedStyle := bodyStyle.Bg(ctx.Theme.Colors.Primary)
+	surfaceStyle := bodyStyle.Bg(ctx.Theme.Colors.Surface)
 
 	x := b.X
-	theme := ctx.Theme
 	for i, col := range t.Columns {
-		w := col.Width
+		w := widths[i]
 		if w <= 0 {
-			w = 10
+			continue
 		}
-		if i == len(t.Columns)-1 {
-			remaining := b.Width - (x - b.X)
-			if remaining > w {
-				w = remaining
-			}
-		}
-		if x+w > b.X+b.Width {
-			w = b.X + b.Width - x
-		}
-
-		headerStyle := theme.Typography.Label
 		title := col.Title
 		if t.SortCol == i {
 			if t.SortAsc {
@@ -129,58 +158,95 @@ func (t *Table) Render(ctx *mofu.RenderContext) {
 				title = "▼ " + title
 			}
 		}
-		r.WriteStyledString(truncate(title, w), x, b.Y, headerStyle)
+		r.WriteString(mofu.Truncate(title, w, true), x, b.Y, headerStyle.Foreground, headerStyle.Background, headerStyle.Attrs)
 		x += w + 1
 	}
 
-	for rowIdx := 0; rowIdx < len(t.Rows) && rowIdx-t.Offset < b.Height-1; rowIdx++ {
+	h := t.visibleHeight()
+	start := t.Offset
+	if start < 0 {
+		start = 0
+	}
+	if start > len(t.Rows)-h {
+		start = len(t.Rows) - h
+	}
+	if start < 0 {
+		start = 0
+	}
+	end := start + h
+	if end > len(t.Rows) {
+		end = len(t.Rows)
+	}
+	for rowIdx := start; rowIdx < end; rowIdx++ {
 		rowY := b.Y + 1 + rowIdx - t.Offset
 		if rowY < b.Y+1 || rowY >= b.Y+b.Height {
 			continue
 		}
 		row := t.Rows[rowIdx]
 		x = b.X
-		rowStyle := theme.Typography.Body
+		rowStyle := bodyStyle
 		if rowIdx == t.Selected {
-			rowStyle = rowStyle.Bg(theme.Colors.Primary)
+			rowStyle = selectedStyle
 		} else if rowIdx%2 == 1 {
-			rowStyle = rowStyle.Bg(theme.Colors.Surface)
+			rowStyle = surfaceStyle
 		}
 		for i, col := range t.Columns {
-			w := col.Width
+			w := widths[i]
 			if w <= 0 {
-				w = 10
-			}
-			if i == len(t.Columns)-1 {
-				remaining := b.Width - (x - b.X)
-				if remaining > w {
-					w = remaining
-				}
-			}
-			if x+w > b.X+b.Width {
-				w = b.X + b.Width - x
+				x += w + 1
+				continue
 			}
 			val := ""
 			if i < len(row) {
 				val = row[i]
 			}
-			val = truncate(val, w)
+			val = mofu.Truncate(val, w, true)
 			switch col.Align {
 			case mofu.AlignCenter:
-				pad := (w - len(val)) / 2
-				if pad > 0 {
-					val = strings.Repeat(" ", pad) + val
-				}
+				val = mofu.PadCenter(val, w)
 			case mofu.AlignRight:
-				pad := w - len(val)
-				if pad > 0 {
-					val = strings.Repeat(" ", pad) + val
-				}
+				val = mofu.PadLeft(val, w)
+			default:
+				val = mofu.PadRight(val, w)
 			}
-			r.WriteStyledString(val, x, rowY, rowStyle)
+			r.WriteString(val, x, rowY, rowStyle.Foreground, rowStyle.Background, rowStyle.Attrs)
 			x += w + 1
 		}
 	}
+}
+
+func (t *Table) columnWidths(total int) []int {
+	if len(t.Columns) == 0 || total <= 0 {
+		return nil
+	}
+	widths := make([]int, len(t.Columns))
+	used := 0
+	for i, col := range t.Columns {
+		w := col.Width
+		if w <= 0 {
+			w = 10
+		}
+		if w < col.MinWidth {
+			w = col.MinWidth
+		}
+		widths[i] = w
+		used += w
+	}
+	if used < total {
+		for i := range widths {
+			widths[i] += (total - used) / len(widths)
+		}
+		rem := (total - used) % len(widths)
+		for i := 0; i < rem; i++ {
+			widths[i]++
+		}
+	}
+	if used > total {
+		for i := range widths {
+			widths[i] = max(1, widths[i]*total/used)
+		}
+	}
+	return widths
 }
 
 func (t *Table) HandleEvent(event mofu.Event) mofu.Cmd {
@@ -217,13 +283,3 @@ func (t *Table) HandleEvent(event mofu.Event) mofu.Cmd {
 func (t *Table) Children() []mofu.Node { return nil }
 func (t *Table) Mount() mofu.Cmd       { return nil }
 func (t *Table) Unmount()              {}
-
-func truncate(s string, maxLen int) string {
-	if len(s) <= maxLen {
-		return s
-	}
-	if maxLen < 3 {
-		return s[:maxLen]
-	}
-	return s[:maxLen-3] + "..."
-}

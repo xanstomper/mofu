@@ -5,18 +5,27 @@ import (
 	"time"
 )
 
+// EventType identifies the kind of event.
 type EventType int
 
 const (
+	// EventKeyPress is a keyboard event.
 	EventKeyPress EventType = iota
+	// EventMouse is a mouse event.
 	EventMouse
+	// EventResize is a terminal resize event.
 	EventResize
+	// EventData is a data event.
 	EventData
+	// EventAnimation is an animation tick event.
 	EventAnimation
+	// EventSystem is a system event.
 	EventSystem
+	// EventCustom is a custom event.
 	EventCustom
 )
 
+// Event is a typed event with data and timestamp.
 type Event struct {
 	Type   EventType
 	Data   Msg
@@ -24,12 +33,14 @@ type Event struct {
 	Source string
 }
 
+// KeyEvent carries keyboard event data.
 type KeyEvent struct {
 	Runes            []byte
 	Key              Key
 	Alt, Ctrl, Shift bool
 }
 
+// Key is a keyboard key identifier.
 type Key int
 
 const (
@@ -47,6 +58,8 @@ const (
 	KeyEnd
 	KeyPgUp
 	KeyPgDn
+	KeyInsert
+	KeyDelete
 	KeyF1
 	KeyF2
 	KeyF3
@@ -59,6 +72,37 @@ const (
 	KeyF10
 	KeyF11
 	KeyF12
+	KeyShiftTab
+
+	// Ctrl+key combinations
+	KeyCtrlAt            // Ctrl+Space / Ctrl+@
+	KeyCtrlA             // Ctrl+A
+	KeyCtrlB             // Ctrl+B
+	KeyCtrlC             // Ctrl+C
+	KeyCtrlD             // Ctrl+D
+	KeyCtrlE             // Ctrl+E
+	KeyCtrlF             // Ctrl+F
+	KeyCtrlG             // Ctrl+G
+	KeyCtrlJ             // Ctrl+J
+	KeyCtrlK             // Ctrl+K
+	KeyCtrlL             // Ctrl+L
+	KeyCtrlN             // Ctrl+N
+	KeyCtrlO             // Ctrl+O
+	KeyCtrlP             // Ctrl+P
+	KeyCtrlQ             // Ctrl+Q
+	KeyCtrlR             // Ctrl+R
+	KeyCtrlS             // Ctrl+S
+	KeyCtrlT             // Ctrl+T
+	KeyCtrlU             // Ctrl+U
+	KeyCtrlV             // Ctrl+V
+	KeyCtrlW             // Ctrl+W
+	KeyCtrlX             // Ctrl+X
+	KeyCtrlY             // Ctrl+Y
+	KeyCtrlZ             // Ctrl+Z
+	KeyCtrlBackslash     // Ctrl+\
+	KeyCtrlCloseBracket  // Ctrl+]
+	KeyCtrlCaret         // Ctrl+^
+	KeyCtrlUnderscore    // Ctrl+_
 )
 
 type MouseEvent struct {

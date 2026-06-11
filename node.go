@@ -2,6 +2,7 @@ package mofu
 
 import "time"
 
+// RenderContext is passed to every Render call and provides the renderer, theme, frame info, and bounds.
 type RenderContext struct {
 	Renderer *Renderer
 	Theme    *Theme
@@ -10,21 +11,48 @@ type RenderContext struct {
 	Bounds   Rect
 }
 
+// Node is the core interface for all MOFU components. Every widget must implement this interface.
+// Use Minimal as a base to get default implementations for most methods.
 type Node interface {
+	// Render draws the component within the given bounds.
 	Render(ctx *RenderContext)
+
+	// HandleEvent processes keyboard, mouse, and system events. Return a Cmd to dispatch side effects.
 	HandleEvent(event Event) Cmd
+
+	// Mount is called when the component is added to the tree. Return a Cmd to run on mount.
 	Mount() Cmd
+
+	// Unmount is called when the component is removed from the tree.
 	Unmount()
+
+	// Children returns the component's child nodes.
 	Children() []Node
+
+	// AddChild adds a child node.
 	AddChild(child Node)
+
+	// RemoveChild removes a child node.
 	RemoveChild(child Node)
+
+	// SetDirty marks the component as needing re-render.
 	SetDirty()
+
+	// Dirty reports whether the component needs re-render.
 	Dirty() bool
+
+	// Bounds returns the component's current layout bounds.
 	Bounds() Rect
+
+	// SetBounds sets the component's layout bounds.
 	SetBounds(Rect)
+
+	// Style returns the component's style for rendering.
 	Style() *Style
 }
 
+// BaseNode provides default implementations for all Node methods.
+// Embed this in your struct to get started with minimal boilerplate.
 type BaseNode struct {
 	style    Style
 	bounds   Rect
@@ -64,11 +92,12 @@ func (n *BaseNode) Unmount()                    {}
 
 type BoxNode struct {
 	BaseNode
-	children []Node
 }
 
 func NewBox(children ...Node) *BoxNode {
-	return &BoxNode{children: children}
+	b := &BoxNode{}
+	b.children = children
+	return b
 }
 func (n *BoxNode) Render(ctx *RenderContext) {
 	if len(n.children) == 0 {
@@ -88,7 +117,6 @@ func (n *BoxNode) Render(ctx *RenderContext) {
 	childCtx.Bounds = inner
 	child.Render(&childCtx)
 }
-func (n *BoxNode) Children() []Node { return n.children }
 func (n *BoxNode) HandleEvent(event Event) Cmd {
 	for _, child := range n.children {
 		if cmd := child.HandleEvent(event); cmd != nil {
@@ -130,16 +158,19 @@ func (n *TextNode) Render(ctx *RenderContext) {
 
 type StackNode struct {
 	BaseNode
-	children []Node
 }
 
 func NewRow(children ...Node) *StackNode {
-	return &StackNode{children: children}
+	s := &StackNode{}
+	s.children = children
+	return s
 }
 func NewColumn(children ...Node) *StackNode {
-	return &StackNode{children: children}
+	s := &StackNode{}
+	s.children = children
+	s.Style().Direction = DirectionColumn
+	return s
 }
-func (n *StackNode) Children() []Node { return n.children }
 func (n *StackNode) Render(ctx *RenderContext) {
 	for _, child := range n.children {
 		childCtx := *ctx
@@ -172,13 +203,13 @@ func (n *StackNode) Unmount() {
 
 type OverlayNode struct {
 	BaseNode
-	children []Node
 }
 
 func NewOverlay(children ...Node) *OverlayNode {
-	return &OverlayNode{children: children}
+	o := &OverlayNode{}
+	o.children = children
+	return o
 }
-func (n *OverlayNode) Children() []Node { return n.children }
 func (n *OverlayNode) Render(ctx *RenderContext) {
 	for _, child := range n.children {
 		childCtx := *ctx

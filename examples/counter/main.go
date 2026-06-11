@@ -4,22 +4,30 @@ import (
 	"fmt"
 	"os"
 
-	"github.com/anomalyco/mofu"
-	"github.com/anomalyco/mofu/widgets"
+	"github.com/xanstomper/mofu"
 )
 
-type App struct {
-	mofu.BaseNode
+// Counter — the simplest MOFU example.
+//
+// Usage:
+//
+//	go run examples/counter/main.go
+//
+// Press j/k or arrow keys to change count, q to quit.
+
+type Counter struct {
+	mofu.Minimal
 	count int
 }
 
-func (a *App) Render(ctx *mofu.RenderContext) {
+func (c *Counter) Render(ctx *mofu.RenderContext) {
 	r := ctx.Bounds
-	text := fmt.Sprintf("Count: %d\n\nPress 'q' to quit, 'j'/'k' to change", a.count)
-	ctx.Renderer.WriteStyledString(text, r.X, r.Y, *a.Style())
+	style := mofu.DefaultStyle().Fg(mofu.Hex("ff69b4"))
+	text := fmt.Sprintf("Count: %d\n\nPress j/k or arrows to change\nPress q to quit", c.count)
+	ctx.Renderer.WriteStyledString(text, r.X, r.Y, style)
 }
 
-func (a *App) HandleEvent(event mofu.Event) mofu.Cmd {
+func (c *Counter) HandleEvent(event mofu.Event) mofu.Cmd {
 	if event.Type != mofu.EventKeyPress {
 		return nil
 	}
@@ -27,29 +35,20 @@ func (a *App) HandleEvent(event mofu.Event) mofu.Cmd {
 	if !ok {
 		return nil
 	}
-	for _, b := range ke.Runes {
-		switch {
-		case b == 'q' || b == 'Q':
-			return func() mofu.Msg {
-				os.Exit(0)
-				return nil
-			}
-		case b == 'j' || ke.Key == mofu.KeyDown:
-			a.count++
-		case b == 'k' || ke.Key == mofu.KeyUp:
-			a.count--
-		}
+
+	switch {
+	case ke.Key == mofu.KeyEsc || (len(ke.Runes) > 0 && (ke.Runes[0] == 'q' || ke.Runes[0] == 'Q')):
+		return mofu.QuitCmd()
+	case ke.Key == mofu.KeyDown || (len(ke.Runes) > 0 && ke.Runes[0] == 'j'):
+		c.count++
+	case ke.Key == mofu.KeyUp || (len(ke.Runes) > 0 && ke.Runes[0] == 'k'):
+		c.count--
 	}
 	return nil
 }
 
 func main() {
-	_ = widgets.NewText("")
-	app := &App{}
-	app.Style().Foreground = mofu.Hex("ff69b4")
-
-	p := mofu.New(app, mofu.WithTheme(mofu.MochiTheme()))
-	if err := p.Run(); err != nil {
+	if err := mofu.Run(&Counter{}); err != nil {
 		fmt.Fprintf(os.Stderr, "error: %v\n", err)
 		os.Exit(1)
 	}

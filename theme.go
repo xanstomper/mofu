@@ -6,6 +6,7 @@ import (
 	"sync"
 )
 
+// ThemeManager manages theme registration, switching, and change notifications.
 type ThemeManager struct {
 	mu       sync.RWMutex
 	current  *Theme
@@ -13,6 +14,7 @@ type ThemeManager struct {
 	onChange []func(old, new *Theme)
 }
 
+// NewThemeManager creates a theme manager with an initial theme.
 func NewThemeManager(initial *Theme) *ThemeManager {
 	return &ThemeManager{
 		current: initial,
@@ -20,12 +22,14 @@ func NewThemeManager(initial *Theme) *ThemeManager {
 	}
 }
 
+// Current returns the currently active theme.
 func (tm *ThemeManager) Current() *Theme {
 	tm.mu.RLock()
 	defer tm.mu.RUnlock()
 	return tm.current
 }
 
+// Register adds a theme with the given name.
 func (tm *ThemeManager) Register(name string, theme *Theme) {
 	theme.Name = name
 	tm.mu.Lock()
@@ -33,6 +37,7 @@ func (tm *ThemeManager) Register(name string, theme *Theme) {
 	tm.mu.Unlock()
 }
 
+// Apply switches to the named theme. Returns false if not found.
 func (tm *ThemeManager) Apply(name string) bool {
 	tm.mu.Lock()
 	defer tm.mu.Unlock()

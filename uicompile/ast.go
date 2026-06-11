@@ -1,6 +1,6 @@
 package uicompile
 
-import "github.com/anomalyco/mofu"
+import "github.com/xanstomper/mofu"
 
 type NodeType int
 

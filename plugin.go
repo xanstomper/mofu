@@ -182,9 +182,13 @@ func (pm *PluginManager) Unregister(name string) error {
 	inst.State = PluginUnloaded
 	delete(pm.plugins, name)
 
-	pm.pipeline = filter(pm.pipeline, func(s PipelineStage) bool {
-		return s.PluginID != name
-	})
+	pruned := make([]PipelineStage, 0, len(pm.pipeline))
+	for _, s := range pm.pipeline {
+		if s.PluginID != name {
+			pruned = append(pruned, s)
+		}
+	}
+	pm.pipeline = pruned
 
 	pm.fireChange(name, PluginUnloaded)
 	return nil

@@ -64,11 +64,11 @@ func (d *DebugInfo) String() string {
 	return b.String()
 }
 
-func ClearScreen() string {
+func modeClearScreen() string {
 	return "\x1b[2J"
 }
 
-func HideCursor() string {
+func modeHideCursor() string {
 	return "\x1b[?25l"
 }
 

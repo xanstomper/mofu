@@ -2,9 +2,8 @@ package widgets
 
 import (
 	"strings"
-	"unicode/utf8"
 
-	"github.com/anomalyco/mofu"
+	"github.com/xanstomper/mofu"
 )
 
 type TextAlign int
@@ -47,61 +46,76 @@ func (t *Text) Render(ctx *mofu.RenderContext) {
 		return
 	}
 
-	lines := strings.Split(t.Content, "\n")
-	visibleLines := lines
-	if t.ScrollY > 0 {
-		if t.ScrollY >= len(lines) {
-			visibleLines = nil
-		} else {
-			visibleLines = lines[t.ScrollY:]
-		}
+	lines := t.layoutLines(b.Width)
+	start := t.ScrollY
+	if start < 0 {
+		start = 0
+	}
+	if start >= len(lines) {
+		return
+	}
+	end := start + b.Height
+	if end > len(lines) {
+		end = len(lines)
 	}
 	style := t.BaseNode.Style()
 
-	maxLines := b.Height
-	if len(visibleLines) > maxLines {
-		visibleLines = visibleLines[:maxLines]
-	}
-
-	for lineIdx, line := range visibleLines {
-		rowY := b.Y + lineIdx
-		if rowY >= b.Y+b.Height {
-			break
+	for i := start; i < end; i++ {
+		rowY := b.Y + i - start
+		line := t.trimHorizontal(lines[i], t.ScrollX)
+		if t.Ellipsis {
+			line = mofu.Truncate(line, b.Width, true)
+		} else {
+			line = mofu.Truncate(line, b.Width, false)
 		}
-
-		if t.Wrap {
-			line = wrapText(line, b.Width)
-		}
-
-		if t.ScrollX > 0 {
-			if t.ScrollX < len(line) {
-				line = line[t.ScrollX:]
-			} else {
-				line = ""
-			}
-		}
-
-		if t.Ellipsis && utf8.RuneCountInString(line) > b.Width {
-			line = truncate(line, b.Width)
-		}
-
 		switch t.Align {
 		case TextCenter:
-			pad := (b.Width - utf8.RuneCountInString(line)) / 2
-			if pad > 0 {
-				line = strings.Repeat(" ", pad) + line
-			}
+			line = mofu.PadCenter(line, b.Width)
 		case TextRight:
-			pad := b.Width - utf8.RuneCountInString(line)
-			if pad > 0 {
-				line = strings.Repeat(" ", pad) + line
-			}
+			line = mofu.PadLeft(line, b.Width)
 		case TextJustify:
 			line = justifyText(line, b.Width)
+		default:
+			line = mofu.PadRight(line, b.Width)
 		}
-
 		r.WriteStyledString(line, b.X, rowY, *style)
 	}
+}
+
+func (t *Text) layoutLines(width int) []string {
+	if width <= 0 {
+		return strings.Split(t.Content, "\n")
+	}
+	var out []string
+	for _, line := range strings.Split(t.Content, "\n") {
+		if t.Wrap {
+			if line == "" {
+				out = append(out, "")
+				continue
+			}
+			out = append(out, mofu.WordWrap(line, width)...)
+			continue
+		}
+		out = append(out, line)
+	}
+	return out
+}
+
+func (t *Text) trimHorizontal(line string, width int) string {
+	if width <= 0 || mofu.MeasureWidth(line) <= width {
+		return line
+	}
+	var out strings.Builder
+	w := 0
+	for _, r := range line {
+		cw := mofu.RuneWidth(r)
+		if w+cw > width {
+			break
+		}
+		out.WriteRune(r)
+		w += cw
+	}
+	return out.String()
 }
 
 func wrapText(s string, width int) string {
@@ -117,7 +131,7 @@ func wrapText(s string, width int) string {
 		}
 		lineLen := 0
 		for _, word := range words {
-			wordLen := utf8.RuneCountInString(word)
+			wordLen := mofu.MeasureWidth(word)
 			if lineLen > 0 && lineLen+1+wordLen > width {
 				result.WriteString("\n")
 				lineLen = 0
@@ -141,7 +155,7 @@ func justifyText(s string, width int) string {
 	}
 	totalChars := 0
 	for _, w := range words {
-		totalChars += utf8.RuneCountInString(w)
+		totalChars += mofu.MeasureWidth(w)
 	}
 	spaces := width - totalChars
 	gaps := len(words) - 1

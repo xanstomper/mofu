@@ -4,12 +4,15 @@
 *.dll
 *.so
 *.dylib
+
+# Test binary
 *.test
+
+# Output of go coverage
 *.out
 
-# Go
+# Dependency directories
 vendor/
-go.work
 
 # IDE
 .idea/
@@ -21,3 +24,14 @@ go.work
 # OS
 .DS_Store
 Thumbs.db
+
+# Go workspace
+go.work
+go.work.sum
+
+# Build output
+/bin/
+/dist/
+
+# Vendored dependencies
+.bubbletea/

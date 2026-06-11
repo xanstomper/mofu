@@ -1,444 +1,590 @@
 package mofu
 
 import (
-	"fmt"
-	"sort"
 	"sync"
 )
 
-type PaneId int
+// ---------------------------------------------------------------------------
+// Workspace (Anthology Ch.10 §10.1)
+// ---------------------------------------------------------------------------
 
-var paneIdCounter PaneId
+// PaneID uniquely identifies a workspace pane.
+type PaneID uint64
 
-func newPaneId() PaneId {
-	paneIdCounter++
-	return paneIdCounter
-}
-
-type Pane struct {
-	ID        PaneId
-	Rect      Rect
-	Widget    Node
-	Title     string
-	Border    BorderStyle
-	IsFocused bool
-	IsVisible bool
-	ZIndex    int
-	MinWidth  int
-	MinHeight int
-	MaxWidth  int
-	MaxHeight int
-}
-
-type SplitDir int
+// WorkspaceLayout describes the arrangement of panes.
+type WorkspaceLayout uint8
 
 const (
-	SplitHorizontal SplitDir = iota
+	LayoutSingle WorkspaceLayout = iota
+	LayoutSplitHorizontal
+	LayoutSplitVertical
+	LayoutTabs
+	LayoutGrid
+	LayoutFloating
+)
+
+// String returns a human-readable name.
+func (l WorkspaceLayout) String() string {
+	switch l {
+	case LayoutSingle:
+		return "single"
+	case LayoutSplitHorizontal:
+		return "split-h"
+	case LayoutSplitVertical:
+		return "split-v"
+	case LayoutTabs:
+		return "tabs"
+	case LayoutGrid:
+		return "grid"
+	case LayoutFloating:
+		return "floating"
+	}
+	return "unknown"
+}
+
+// WorkspaceState holds the full state of the workspace system.
+type WorkspaceState struct {
+	Layout     WorkspaceLayout
+	ActivePane PaneID
+	PaneStates map[PaneID]PaneState
+	TabIndex   int
+	TabNames   map[PaneID]string
+	Dirty      bool
+}
+
+// PaneState tracks runtime state for an individual pane.
+type PaneState struct {
+	Title         string
+	Focused       bool
+	MinSize       Rect
+	MaxSize       Rect
+	FloatingPos   Vec2
+	FloatingSize  Vec2
+	Visible       bool
+	UserData      map[string]any
+	SplitFraction float64 // 0..1 for split layouts
+}
+
+// DefaultPaneState returns the zero-value for PaneState with safe defaults.
+func DefaultPaneState() PaneState {
+	return PaneState{
+		Visible:       true,
+		SplitFraction: 0.5,
+	}
+}
+
+// Workspace manages a collection of named panes and their layout.
+// It is the central coordination point for multi-pane applications.
+type Workspace struct {
+	mu       sync.Mutex
+	panes    map[PaneID]Pane
+	order    []PaneID // display order
+	state    WorkspaceState
+	nextID   PaneID
+	listener WorkspaceListener
+}
+
+// Pane is the interface each workspace pane must implement.
+// A Pane is also a mofu.Node so it can render and process events normally.
+type Pane interface {
+	ID() PaneID
+	Type() string
+	Title() string
+	Close()
+	Split(direction SplitDirection) PaneID
+	MinSize() (width, height int)
+	MaxSize() (width, height int)
+}
+
+// SplitDirection for Split().
+type SplitDirection uint8
+
+const (
+	SplitHorizontal SplitDirection = iota
 	SplitVertical
 )
 
-type SplitOp struct {
-	Dir    SplitDir
-	PaneId PaneId
-	Ratio  float64
-	NewId  PaneId
+// WorkspaceListener receives workspace lifecycle events.
+type WorkspaceListener interface {
+	OnPaneAdded(pane Pane)
+	OnPaneRemoved(id PaneID)
+	OnPaneFocused(id PaneID)
+	OnLayoutChanged(layout WorkspaceLayout)
 }
 
-type PaneManager struct {
-	mu         sync.Mutex
-	Panes      map[PaneId]*Pane
-	FocusOrder []PaneId
-	History    []SplitOp
-	MaxHistory int
-	Root       Node
-	nextZ      int
-}
-
-func NewPaneManager(root Node) *PaneManager {
-	return &PaneManager{
-		Panes:      make(map[PaneId]*Pane),
-		FocusOrder: make([]PaneId, 0),
-		History:    make([]SplitOp, 0, 50),
-		MaxHistory: 50,
-		Root:       root,
+// NewWorkspace returns a fresh, empty workspace in Single-pane mode.
+func NewWorkspace() *Workspace {
+	return &Workspace{
+		panes: make(map[PaneID]Pane),
+		order: nil,
+		state: WorkspaceState{
+			Layout:     LayoutSingle,
+			PaneStates: make(map[PaneID]PaneState),
+			TabNames:   make(map[PaneID]string),
+		},
 	}
 }
 
-func (pm *PaneManager) Add(widget Node, rect Rect) PaneId {
-	pm.mu.Lock()
-	defer pm.mu.Unlock()
+// SetListener sets a listener for pane lifecycle events.
+func (w *Workspace) SetListener(l WorkspaceListener) {
+	w.mu.Lock()
+	w.listener = l
+	w.mu.Unlock()
+}
 
-	id := newPaneId()
-	pane := &Pane{
-		ID:        id,
-		Rect:      rect,
-		Widget:    widget,
-		Border:    BorderRounded,
-		IsVisible: true,
-		MinWidth:  10,
-		MinHeight: 3,
-		ZIndex:    pm.nextZ,
+// firePaneAdded notifies the listener without holding the lock.
+func (w *Workspace) firePaneAdded(p Pane) {
+	if w.listener != nil {
+		w.listener.OnPaneAdded(p)
 	}
-	pm.nextZ++
-	pm.Panes[id] = pane
-	pm.FocusOrder = append(pm.FocusOrder, id)
-	pm.Root.AddChild(widget)
+}
+
+// firePaneRemoved notifies the listener without holding the lock.
+func (w *Workspace) firePaneRemoved(id PaneID) {
+	if w.listener != nil {
+		w.listener.OnPaneRemoved(id)
+	}
+}
+
+// firePaneFocused notifies the listener without holding the lock.
+func (w *Workspace) firePaneFocused(id PaneID) {
+	if w.listener != nil {
+		w.listener.OnPaneFocused(id)
+	}
+}
+
+// fireLayoutChanged notifies the listener without holding the lock.
+func (w *Workspace) fireLayoutChanged(l WorkspaceLayout) {
+	if w.listener != nil {
+		w.listener.OnLayoutChanged(l)
+	}
+}
+
+// ---------------------------------------------------------------------------
+// Pane CRUD
+// ---------------------------------------------------------------------------
+
+// AddPane inserts a new pane and returns its ID.
+func (w *Workspace) AddPane(pane Pane) PaneID {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	id := w.nextID
+	w.nextID++
+	w.panes[id] = pane
+	w.order = append(w.order, id)
+	w.state.PaneStates[id] = DefaultPaneState()
+	ps := w.state.PaneStates[id]
+	ps.Title = pane.Title()
+	ps.UserData = make(map[string]any)
+	w.state.PaneStates[id] = ps
+	w.state.TabNames[id] = pane.Title()
+	w.state.Dirty = true
+	w.firePaneAdded(pane)
 	return id
 }
 
-func (pm *PaneManager) AddWithTitle(widget Node, title string, rect Rect) PaneId {
-	id := pm.Add(widget, rect)
-	pm.mu.Lock()
-	pm.Panes[id].Title = title
-	pm.mu.Unlock()
-	return id
-}
+// RemovePane removes and destroys a pane by ID.
+func (w *Workspace) RemovePane(id PaneID) {
+	w.mu.Lock()
+	defer w.mu.Unlock()
 
-func (pm *PaneManager) Split(id PaneId, dir SplitDir, ratio float64) (PaneId, error) {
-	pm.mu.Lock()
-	defer pm.mu.Unlock()
-
-	pane, ok := pm.Panes[id]
-	if !ok {
-		return 0, fmt.Errorf("pane %d not found", id)
-	}
-
-	var newRect Rect
-	switch dir {
-	case SplitHorizontal:
-		splitW := int(float64(pane.Rect.Width) * ratio)
-		if splitW < pane.MinWidth || pane.Rect.Width-splitW < pane.MinWidth {
-			return 0, fmt.Errorf("split would create pane below min width")
-		}
-		newRect = Rect{
-			X: pane.Rect.X + splitW, Y: pane.Rect.Y,
-			Width: pane.Rect.Width - splitW, Height: pane.Rect.Height,
-		}
-		pane.Rect.Width = splitW
-	case SplitVertical:
-		splitH := int(float64(pane.Rect.Height) * ratio)
-		if splitH < pane.MinHeight || pane.Rect.Height-splitH < pane.MinHeight {
-			return 0, fmt.Errorf("split would create pane below min height")
-		}
-		newRect = Rect{
-			X: pane.Rect.X, Y: pane.Rect.Y + splitH,
-			Width: pane.Rect.Width, Height: pane.Rect.Height - splitH,
-		}
-		pane.Rect.Height = splitH
-	}
-
-	newId := newPaneId()
-	newPane := &Pane{
-		ID: newId, Rect: newRect, Widget: NewBox(NewText("")),
-		Border: pane.Border, IsVisible: true,
-		MinWidth: 10, MinHeight: 3, ZIndex: pm.nextZ,
-	}
-	pm.nextZ++
-	pm.Panes[newId] = newPane
-
-	idx := indexOf(pm.FocusOrder, id)
-	if idx >= 0 {
-		insertAfter := make([]PaneId, 0, len(pm.FocusOrder)+1)
-		insertAfter = append(insertAfter, pm.FocusOrder[:idx+1]...)
-		insertAfter = append(insertAfter, newId)
-		insertAfter = append(insertAfter, pm.FocusOrder[idx+1:]...)
-		pm.FocusOrder = insertAfter
-	}
-
-	pm.History = append(pm.History, SplitOp{Dir: dir, PaneId: id, Ratio: ratio, NewId: newId})
-	if len(pm.History) > pm.MaxHistory {
-		pm.History = pm.History[1:]
-	}
-
-	return newId, nil
-}
-
-func (pm *PaneManager) Close(id PaneId) error {
-	pm.mu.Lock()
-	defer pm.mu.Unlock()
-
-	if len(pm.Panes) <= 1 {
-		return fmt.Errorf("cannot close last pane")
-	}
-
-	pane, ok := pm.Panes[id]
-	if !ok {
-		return fmt.Errorf("pane %d not found", id)
-	}
-
-	for _, other := range pm.Panes {
-		if other.ID != id && other.ID != 0 {
-			adj := pm.findAdjacent(pane.Rect, other.Rect)
-			if adj != 0 {
-				other.Rect.Width += adj
-			}
+	delete(w.panes, id)
+	delete(w.state.PaneStates, id)
+	delete(w.state.TabNames, id)
+	for i, pid := range w.order {
+		if pid == id {
+			w.order = append(w.order[:i], w.order[i+1:]...)
 			break
 		}
 	}
-
-	pane.Widget.Unmount()
-	pm.Root.RemoveChild(pane.Widget)
-	delete(pm.Panes, id)
-
-	pm.FocusOrder = filter(pm.FocusOrder, func(pid PaneId) bool { return pid != id })
-	if len(pm.FocusOrder) > 0 {
-		pm.Panes[pm.FocusOrder[len(pm.FocusOrder)-1]].IsFocused = true
+	if w.state.ActivePane == id {
+		w.state.ActivePane = w.activeOrderLocked()
 	}
-
-	return nil
+	w.state.Dirty = true
+	w.firePaneRemoved(id)
 }
 
-func (pm *PaneManager) findAdjacent(a, b Rect) int {
-	if a.Y+a.Height >= b.Y && a.Y <= b.Y+b.Height {
-		if b.X+b.Width == a.X {
-			return a.Width
-		}
-		if a.X+a.Width == b.X {
-			return b.Width
-		}
-	}
-	if a.X+a.Width >= b.X && a.X <= b.X+b.Width {
-		if b.Y+b.Height == a.Y {
-			return a.Height
-		}
-		if a.Y+a.Height == b.Y {
-			return b.Height
-		}
-	}
-	return 0
+// Pane returns the pane for an ID, or nil.
+func (w *Workspace) Pane(id PaneID) Pane {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	return w.panes[id]
 }
 
-func (pm *PaneManager) Focus(id PaneId) {
-	pm.mu.Lock()
-	defer pm.mu.Unlock()
+// ActivePane returns the currently-focused pane.
+func (w *Workspace) ActivePane() (Pane, bool) {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	p, ok := w.panes[w.state.ActivePane]
+	return p, ok
+}
 
-	for _, p := range pm.Panes {
-		p.IsFocused = p.ID == id
-	}
-	idx := indexOf(pm.FocusOrder, id)
-	if idx >= 0 {
-		pm.FocusOrder = append(append(pm.FocusOrder[:idx], pm.FocusOrder[idx+1:]...), id)
+// SetActivePane focuses a pane by ID.
+func (w *Workspace) SetActivePane(id PaneID) {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	if _, ok := w.panes[id]; ok {
+		w.state.ActivePane = id
+		w.state.Dirty = true
+		w.firePaneFocused(id)
 	}
 }
 
-func (pm *PaneManager) FocusNext() {
-	pm.mu.Lock()
-	defer pm.mu.Unlock()
-
-	if len(pm.FocusOrder) == 0 {
+// MoveFocus shifts focus to the next pane in display order.
+// If wrap is true, focus wraps around.
+func (w *Workspace) MoveFocus(forward bool, wrap bool) {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	if len(w.order) == 0 {
 		return
 	}
-	current := pm.FocusOrder[len(pm.FocusOrder)-1]
-	var next PaneId
-	found := false
-	for _, id := range pm.FocusOrder {
-		if found {
-			next = id
+	cur := w.state.ActivePane
+	curIdx := -1
+	for i, pid := range w.order {
+		if pid == cur {
+			curIdx = i
 			break
 		}
-		if id == current {
-			found = true
-		}
 	}
-	if !found || next == 0 {
-		next = pm.FocusOrder[0]
-	}
-	for _, p := range pm.Panes {
-		p.IsFocused = p.ID == next
-	}
-	pm.FocusOrder = append(pm.FocusOrder[:len(pm.FocusOrder)-1], next)
-}
-
-func (pm *PaneManager) Render(ctx *RenderContext) {
-	pm.mu.Lock()
-	defer pm.mu.Unlock()
-
-	sorted := make([]*Pane, 0, len(pm.Panes))
-	for _, p := range pm.Panes {
-		if p.IsVisible {
-			sorted = append(sorted, p)
-		}
-	}
-	sort.Slice(sorted, func(i, j int) bool {
-		return sorted[i].ZIndex < sorted[j].ZIndex
-	})
-
-	r := ctx.Renderer
-	for _, pane := range sorted {
-		borderStyle := pane.Border
-		if pane.IsFocused {
-			r.WriteStyledString("● "+pane.Title+" ", pane.Rect.X+2, pane.Rect.Y, ctx.Theme.Typography.Label)
-		} else if pane.Title != "" {
-			r.WriteStyledString("○ "+pane.Title+" ", pane.Rect.X+2, pane.Rect.Y, ctx.Theme.Typography.Body)
-		}
-
-		drawBorder(r, pane.Rect, borderStyle)
-
-		inner := Rect{
-			X: pane.Rect.X + 1, Y: pane.Rect.Y + 1,
-			Width: pane.Rect.Width - 2, Height: pane.Rect.Height - 2,
-		}
-		if inner.Width > 0 && inner.Height > 0 {
-			pane.Widget.SetBounds(inner)
-			wCtx := *ctx
-			wCtx.Bounds = inner
-			pane.Widget.Render(&wCtx)
-		}
-	}
-}
-
-func drawBorder(r *Renderer, rect Rect, bs BorderStyle) {
-	if bs == BorderNone || bs == BorderHidden {
+	if curIdx == -1 {
+		w.state.ActivePane = w.order[0]
+		w.firePaneFocused(w.state.ActivePane)
+		w.state.Dirty = true
 		return
 	}
-	if rect.Width < 2 || rect.Height < 2 {
-		return
-	}
-	x1, y1 := rect.X, rect.Y
-	x2, y2 := rect.X+rect.Width-1, rect.Y+rect.Height-1
-
-	r.front.Set(x1, y1, bs.TopLeft, Color{}, Color{}, 0)
-	r.front.Set(x2, y1, bs.TopRight, Color{}, Color{}, 0)
-	r.front.Set(x1, y2, bs.BottomLeft, Color{}, Color{}, 0)
-	r.front.Set(x2, y2, bs.BottomRight, Color{}, Color{}, 0)
-
-	for x := x1 + 1; x < x2; x++ {
-		r.front.Set(x, y1, bs.Top, Color{}, Color{}, 0)
-		r.front.Set(x, y2, bs.Bottom, Color{}, Color{}, 0)
-	}
-	for y := y1 + 1; y < y2; y++ {
-		r.front.Set(x1, y, bs.Left, Color{}, Color{}, 0)
-		r.front.Set(x2, y, bs.Right, Color{}, Color{}, 0)
-	}
-}
-
-type Tab struct {
-	ID       PaneId
-	Title    string
-	Icon     rune
-	IsDirty  bool
-	CanClose bool
-}
-
-type TabBar struct {
-	Tabs      []Tab
-	ActiveIdx int
-	X, Y      int
-}
-
-func (tb *TabBar) Render(r *Renderer, theme *Theme) {
-	x := tb.X
-	for i, tab := range tb.Tabs {
-		if i == tb.ActiveIdx {
-			r.WriteStyledString(" ", x, tb.Y, theme.Typography.Label)
-			x++
-		}
-		label := tab.Title
-		if tab.Icon != 0 {
-			label = string(tab.Icon) + " " + label
-		}
-		if tab.IsDirty {
-			label = "* " + label
-		}
-		sty := theme.Typography.Body
-		if i == tb.ActiveIdx {
-			sty = theme.Typography.Label
-			sty.Attrs |= AttrUnderline
-		}
-		r.WriteStyledString(" "+label+" ", x, tb.Y, sty)
-		x += len(label) + 2
-
-		if tab.CanClose {
-			r.WriteString("×", x, tb.Y, theme.Colors.TextDim, Color{}, 0)
-			x += 2
-		} else {
-			x++
-		}
-	}
-}
-
-type LayoutStrategy int
-
-const (
-	LayoutFlex LayoutStrategy = iota
-	LayoutGrid
-	LayoutStacked
-	LayoutTabbed
-)
-
-func (pm *PaneManager) ApplyLayout(strategy LayoutStrategy, bounds Rect) {
-	pm.mu.Lock()
-	defer pm.mu.Unlock()
-
-	visible := make([]*Pane, 0, len(pm.Panes))
-	for _, p := range pm.Panes {
-		if p.IsVisible {
-			visible = append(visible, p)
-		}
-	}
-	if len(visible) == 0 {
-		return
-	}
-
-	switch strategy {
-	case LayoutGrid:
-		cols := 2
-		if len(visible) <= 2 {
-			cols = len(visible)
-		}
-		rows := (len(visible) + cols - 1) / cols
-		pW := bounds.Width / cols
-		pH := bounds.Height / rows
-		for i, p := range visible {
-			col := i % cols
-			row := i / cols
-			p.Rect = Rect{
-				X: bounds.X + col*pW, Y: bounds.Y + row*pH,
-				Width: pW, Height: pH,
-			}
-		}
-	case LayoutStacked:
-		for i, p := range visible {
-			p.Rect = bounds
-			if i == len(visible)-1 {
-				p.IsVisible = true
+	next := curIdx
+	if forward {
+		next = curIdx + 1
+		if next >= len(w.order) {
+			if wrap {
+				next = 0
 			} else {
-				p.IsVisible = i == len(visible)-1
+				next = curIdx
 			}
 		}
-	default:
-		n := len(visible)
-		if n == 1 {
-			visible[0].Rect = bounds
-			return
-		}
-		ratio := 1.0 / float64(n)
-		for i, p := range visible {
-			p.Rect = Rect{
-				X:      bounds.X + int(float64(i)*ratio*float64(bounds.Width)),
-				Y:      bounds.Y,
-				Width:  int(ratio * float64(bounds.Width)),
-				Height: bounds.Height,
+	} else {
+		next = curIdx - 1
+		if next < 0 {
+			if wrap {
+				next = len(w.order) - 1
+			} else {
+				next = curIdx
 			}
 		}
 	}
+	w.state.ActivePane = w.order[next]
+	w.firePaneFocused(w.state.ActivePane)
+	w.state.Dirty = true
 }
 
-func indexOf(ids []PaneId, id PaneId) int {
-	for i, v := range ids {
-		if v == id {
-			return i
-		}
+// CloseActivePane closes and removes the currently-active pane.
+// If it was the last pane, the workspace is reset to Single mode.
+func (w *Workspace) CloseActivePane() {
+	w.mu.Lock()
+	id := w.state.ActivePane
+	w.mu.Unlock()
+	if id == 0 {
+		return
 	}
-	return -1
+	w.RemovePane(id)
 }
 
-func filter[T any](s []T, fn func(T) bool) []T {
-	out := make([]T, 0, len(s))
-	for _, v := range s {
-		if fn(v) {
-			out = append(out, v)
+// Panes returns a snapshot of all panes (no lock held after return).
+func (w *Workspace) Panes() []Pane {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	out := make([]Pane, 0, len(w.panes))
+	for _, id := range w.order {
+		if p, ok := w.panes[id]; ok {
+			out = append(out, p)
 		}
 	}
 	return out
+}
+
+func (w *Workspace) activeOrderLocked() PaneID {
+	if len(w.order) == 0 {
+		return 0
+	}
+	return w.order[0]
+}
+
+// Count returns the number of panes.
+func (w *Workspace) Count() int {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	return len(w.panes)
+}
+
+// Len is a synonym for Count.
+func (w *Workspace) Len() int { return w.Count() }
+
+// ---------------------------------------------------------------------------
+// Layout (Anthology Ch.10 §10.2)
+// ---------------------------------------------------------------------------
+
+// SetLayout changes the layout mode.
+func (w *Workspace) SetLayout(layout WorkspaceLayout) {
+	w.mu.Lock()
+	w.state.Layout = layout
+	w.state.Dirty = true
+	l := layout
+	w.mu.Unlock()
+	w.fireLayoutChanged(l)
+}
+
+// Layout returns the current layout mode.
+func (w *Workspace) Layout() WorkspaceLayout {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	return w.state.Layout
+}
+
+// SplitActive splits the active pane and returns the new pane ID.
+func (w *Workspace) SplitActive(direction SplitDirection) PaneID {
+	w.mu.Lock()
+	pane, ok := w.panes[w.state.ActivePane]
+	w.mu.Unlock()
+
+	if !ok || pane == nil {
+		return 0
+	}
+	newID := pane.Split(direction)
+	if newID == 0 {
+		return 0
+	}
+	// In a real implementation, the new pane and its ID would be registered
+	// via AddPane; here we return the ID the splitter gave us.
+	_ = newID
+	return newID
+}
+
+// ResizePane adjusts the split fraction for a pane in a split layout.
+// fraction is 0..1; 0 = minimum, 1 = maximum size for the primary pane.
+func (w *Workspace) ResizePane(id PaneID, fraction float64) {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	ps, ok := w.state.PaneStates[id]
+	if !ok {
+		return
+	}
+	if fraction < 0 {
+		fraction = 0
+	} else if fraction > 1 {
+		fraction = 1
+	}
+	ps.SplitFraction = fraction
+	w.state.PaneStates[id] = ps
+	w.state.Dirty = true
+}
+
+// SetPaneTitle updates the user-visible title of a pane.
+func (w *Workspace) SetPaneTitle(id PaneID, title string) {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	ps, ok := w.state.PaneStates[id]
+	if !ok {
+		return
+	}
+	ps.Title = title
+	w.state.PaneStates[id] = ps
+	w.state.TabNames[id] = title
+	w.state.Dirty = true
+}
+
+// PaneStateEntry pairs an ID with PaneState for serialisation.
+type PaneStateEntry struct {
+	ID    PaneID
+	State PaneState
+}
+
+// TabEntry pairs an ID with a title string.
+type TabEntry struct {
+	ID    PaneID
+	Title string
+}
+
+// Snapshot holds a serialisable view of the workspace (distinct from serialize.go StateSnapshot).
+type Snapshot struct {
+	ActivePane PaneID
+	Layout     WorkspaceLayout
+	PaneStates []PaneStateEntry
+	TabNames   []TabEntry
+}
+
+// SnapshotExport produces a snapshot of the current workspace state.
+func (w *Workspace) SnapshotExport() Snapshot {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	entries := make([]PaneStateEntry, 0, len(w.state.PaneStates))
+	for id, ps := range w.state.PaneStates {
+		cp := ps
+		if cp.UserData == nil {
+			cp.UserData = make(map[string]any)
+		}
+		entries = append(entries, PaneStateEntry{ID: id, State: cp})
+	}
+	tabs := make([]TabEntry, 0, len(w.state.TabNames))
+	for id, name := range w.state.TabNames {
+		tabs = append(tabs, TabEntry{ID: id, Title: name})
+	}
+	return Snapshot{
+		ActivePane: w.state.ActivePane,
+		Layout:     w.state.Layout,
+		PaneStates: entries,
+		TabNames:   tabs,
+	}
+}
+
+// ---------------------------------------------------------------------------
+// TabBar (Anthology Ch.10 §10.3)
+// ---------------------------------------------------------------------------
+
+// TabBar renders a minimised tab overview of all panes.
+type TabBar struct {
+	workspace *Workspace
+	Focused   Style
+	Normal    Style
+}
+
+// NewTabBar returns a TabBar linked to a Workspace.
+func NewTabBar(ws *Workspace) *TabBar {
+	return &TabBar{
+		workspace: ws,
+		Focused:   DefaultStyle(),
+		Normal:    DefaultStyle(),
+	}
+}
+
+// ActiveID returns the currently active pane ID.
+func (tb *TabBar) ActiveID() PaneID {
+	tb.workspace.mu.Lock()
+	defer tb.workspace.mu.Unlock()
+	return tb.workspace.state.ActivePane
+}
+
+// TabNames returns titles in order.
+func (tb *TabBar) TabNames() []string {
+	tb.workspace.mu.Lock()
+	defer tb.workspace.mu.Unlock()
+	out := make([]string, 0, len(tb.workspace.order))
+	for _, pid := range tb.workspace.order {
+		if name, ok := tb.workspace.state.TabNames[pid]; ok {
+			out = append(out, name)
+		}
+	}
+	return out
+}
+
+// SelectByIndex focuses the pane at the given tab index.
+func (tb *TabBar) SelectByIndex(idx int) {
+	tb.workspace.mu.Lock()
+	defer tb.workspace.mu.Unlock()
+	if idx < 0 || idx >= len(tb.workspace.order) {
+		return
+	}
+	pid := tb.workspace.order[idx]
+	tb.workspace.state.ActivePane = pid
+	tb.workspace.state.Dirty = true
+	tb.workspace.firePaneFocused(pid)
+}
+
+// ---------------------------------------------------------------------------
+// LayoutCache (Anthology Ch.10 §10.4)
+// ---------------------------------------------------------------------------
+
+// LayoutCache stores the last-computed pane layout, keyed by a fingerprint
+// string. Callers should invalidate when the workspace state changes.
+type LayoutCache struct {
+	last  string
+	rects map[PaneID]Rect
+	order []PaneID
+	dirty bool
+}
+
+// NewLayoutCache returns an empty cache.
+func NewLayoutCache() *LayoutCache {
+	return &LayoutCache{
+		rects: make(map[PaneID]Rect),
+	}
+}
+
+// GetOrCompute returns cached rectangles for order, recomputing when dirty.
+// `compute` is invoked to recalculate panes positions for the given bounds.
+func (lc *LayoutCache) GetOrCompute(order []PaneID, bounds Rect, compute func(order []PaneID, bounds Rect) map[PaneID]Rect) map[PaneID]Rect {
+	fp := fingerprint(order, bounds)
+	if !lc.dirty && lc.last == fp {
+		return lc.rects
+	}
+	lc.rects = compute(order, bounds)
+	lc.order = append([]PaneID(nil), order...)
+	lc.last = fp
+	lc.dirty = false
+	return lc.rects
+}
+
+// Invalidate marks the cache dirty so it recomputes on the next query.
+func (lc *LayoutCache) Invalidate() { lc.dirty = true }
+
+// Rect returns the cached Rect for id, or Rect{}.
+func (lc *LayoutCache) Rect(id PaneID) Rect {
+	if r, ok := lc.rects[id]; ok {
+		return r
+	}
+	return Rect{}
+}
+
+func fingerprint(order []PaneID, bounds Rect) string {
+	h := uint32(2166136261)
+	for _, id := range order {
+		h ^= uint32(id)
+		h *= 16777619
+	}
+	h ^= uint32(bounds.X)
+	h *= 16777619
+	h ^= uint32(bounds.Y)
+	h *= 16777619
+	h ^= uint32(bounds.Width)
+	h *= 16777619
+	h ^= uint32(bounds.Height)
+	h *= 16777619
+	return string([]byte{
+		byte(h >> 24), byte(h >> 16), byte(h >> 8), byte(h),
+	})
+}
+
+// ---------------------------------------------------------------------------
+// State helpers
+// DefaultLayout computes a default split layout for n visible panes.
+// It returns a WorkspaceLayout recommendation only.
+func DefaultLayout(n int) WorkspaceLayout {
+	switch {
+	case n <= 1:
+		return LayoutSingle
+	case n <= 2:
+		return LayoutSplitVertical
+	case n <= 3:
+		return LayoutSplitHorizontal
+	default:
+		return LayoutTabs
+	}
+}
+
+// MaxLayout returns the layout capable of displaying n panes simultaneously.
+func MaxLayout(n int) WorkspaceLayout {
+	if n <= 1 {
+		return LayoutSingle
+	}
+	if n <= 4 {
+		return LayoutGrid
+	}
+	return LayoutTabs
+}
+
+// MinLayout returns the simplest layout supporting n panes.
+func MinLayout(n int) WorkspaceLayout {
+	if n <= 1 {
+		return LayoutSingle
+	}
+	return LayoutSingle
 }

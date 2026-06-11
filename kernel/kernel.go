@@ -16,13 +16,14 @@ package kernel
 import (
 	"context"
 	"hash/fnv"
+	"sort"
 	"sync"
 	"sync/atomic"
 	"time"
 
-	"github.com/anomalyco/mofu/effect"
-	"github.com/anomalyco/mofu/message"
-	"github.com/anomalyco/mofu/state"
+	"github.com/xanstomper/mofu/effect"
+	"github.com/xanstomper/mofu/message"
+	"github.com/xanstomper/mofu/state"
 )
 
 // ---------------------------------------------------------------------------
@@ -97,11 +98,12 @@ type Kernel struct {
 	// Fast path state
 	lastSnapshot map[state.NodeID]any
 	dirtyCount   atomic.Int64
+	lastDelta    time.Duration
 
 	// Layout cache
-	layoutCache    *LayoutCache
-	lastTermWidth  int
-	lastTermHieght int
+	layoutCache   *LayoutCache
+	lastTermWidth int
+	lastTermHeight int
 
 	// Lifecycle
 	ctx    context.Context
@@ -184,6 +186,20 @@ func (k *Kernel) DirtyCount() int64 {
 	return k.dirtyCount.Load()
 }
 
+// LastDelta returns the duration of the most recent frame.
+func (k *Kernel) LastDelta() time.Duration {
+	return time.Duration(atomic.LoadInt64((*int64)(&k.lastDelta)))
+}
+
+// SetTerminalSize updates the terminal dimensions for layout cache validation.
+func (k *Kernel) SetTerminalSize(w, h int) {
+	k.mu.Lock()
+	k.lastTermWidth = w
+	k.lastTermHeight = h
+	k.layoutCache.Invalidate()
+	k.mu.Unlock()
+}
+
 // ---------------------------------------------------------------------------
 // Event loop — message pump
 // ---------------------------------------------------------------------------
@@ -230,9 +246,13 @@ func (k *Kernel) fastPathDispatch(msg message.Message) {
 	k.requestRender()
 }
 
-// slowPathDispatch goes through the full effect system.
+// slowPathDispatch routes through the effect system for plugin/IO-heavy messages.
 func (k *Kernel) slowPathDispatch(msg message.Message) {
-	k.Bus.Dispatch(msg)
+	// Wrap the message as an effect and let the effect system handle it.
+	k.Effects.Dispatch(effect.Effect{
+		Type:    effect.TypeMessage,
+		Payload: msg,
+	})
 	k.requestRender()
 }
 
@@ -269,6 +289,7 @@ func (k *Kernel) tick() {
 	dt := now.Sub(k.lastTick)
 	k.lastTick = now
 	k.frameNum.Add(1)
+	atomic.StoreInt64((*int64)(&k.lastDelta), int64(dt))
 
 	k.mu.Lock()
 	defer k.mu.Unlock()
@@ -296,9 +317,17 @@ func (k *Kernel) tick() {
 		}
 	}
 
-	// 4. Layout
+	// 4. Layout (with cache skip when state and dimensions unchanged)
 	if k.onLayout != nil {
-		k.onLayout()
+		stateHash := HashState(k.State)
+		w, h := 0, 0
+		if k.lastTermWidth > 0 && k.lastTermHeight > 0 {
+			w, h = k.lastTermWidth, k.lastTermHeight
+		}
+		if k.layoutCache.Check(w, h, stateHash) {
+			k.onLayout()
+			k.layoutCache.Update(w, h, stateHash)
+		}
 	}
 
 	// 5. UI materialization
@@ -367,14 +396,26 @@ func (lc *LayoutCache) Invalidate() {
 }
 
 // HashState computes a fast hash of the current state graph for layout caching.
+// Uses sorted keys for deterministic results.
 func HashState(g *state.Graph) uint64 {
 	snap := g.Snapshot()
 	h := fnv.New64a()
-	for id, val := range snap {
+
+	// Sort keys for deterministic hash
+	ids := make([]state.NodeID, 0, len(snap))
+	for id := range snap {
+		ids = append(ids, id)
+	}
+	sort.Slice(ids, func(i, j int) bool { return ids[i] < ids[j] })
+
+	for _, id := range ids {
 		h.Write([]byte{byte(id >> 56), byte(id >> 48), byte(id >> 40), byte(id >> 32),
 			byte(id >> 24), byte(id >> 16), byte(id >> 8), byte(id)})
+		val := snap[id]
 		if s, ok := val.(string); ok {
 			h.Write([]byte(s))
+		} else if n, ok := val.(int); ok {
+			h.Write([]byte{byte(n >> 24), byte(n >> 16), byte(n >> 8), byte(n)})
 		}
 	}
 	return h.Sum64()

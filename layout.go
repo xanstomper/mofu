@@ -1,9 +1,11 @@
 package mofu
 
+// Rect represents a rectangular region in the terminal grid.
 type Rect struct {
 	X, Y, Width, Height int
 }
 
+// Contains reports whether the point (x, y) is inside the rectangle.
 func (r Rect) Contains(x, y int) bool {
 	return x >= r.X && x < r.X+r.Width && y >= r.Y && y < r.Y+r.Height
 }
@@ -96,19 +98,20 @@ func layoutRow(children []Node, bounds Rect, s *Style) {
 				w = flexW
 			}
 		}
+		h := cs.Height
 		yOff := 0
 		switch cs.Align {
 		case AlignCenter:
-			yOff = (bounds.Height - cs.Height) / 2
+			yOff = (bounds.Height - h) / 2
 		case AlignRight:
-			yOff = bounds.Height - cs.Height
+			yOff = bounds.Height - h
 		case AlignStretch:
-			cs.Height = bounds.Height
+			h = bounds.Height
 		}
 		if yOff < 0 {
 			yOff = 0
 		}
-		child.SetBounds(Rect{x, bounds.Y + yOff, w, bounds.Height - yOff})
+		child.SetBounds(Rect{x, bounds.Y + yOff, w, h - yOff})
 		child.SetDirty()
 		ComputeLayout(child, child.Bounds())
 		x += w + s.Gap
@@ -154,19 +157,20 @@ func layoutCol(children []Node, bounds Rect, s *Style) {
 				h = flexH
 			}
 		}
+		w := cs.Width
 		xOff := 0
 		switch cs.Align {
 		case AlignCenter:
-			xOff = (bounds.Width - cs.Width) / 2
+			xOff = (bounds.Width - w) / 2
 		case AlignRight:
-			xOff = bounds.Width - cs.Width
+			xOff = bounds.Width - w
 		case AlignStretch:
-			cs.Width = bounds.Width
+			w = bounds.Width
 		}
 		if xOff < 0 {
 			xOff = 0
 		}
-		child.SetBounds(Rect{bounds.X + xOff, y, bounds.Width - xOff, h})
+		child.SetBounds(Rect{bounds.X + xOff, y, w - xOff, h})
 		child.SetDirty()
 		ComputeLayout(child, child.Bounds())
 		y += h + s.Gap

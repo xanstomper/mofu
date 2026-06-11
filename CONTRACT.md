@@ -78,11 +78,11 @@ Make MOFU the most powerful terminal application runtime across all ecosystems (
 - **Files**: `widgets/text.go`
 - **Status**: Complete
 
-### C8: SSH Server Mode
+### C8: SSH Server Mode ✅
 - **Deliverable**: MOFU app serves over SSH. Wish-style middleware chain (logging, auth, rate-limit, handler).
 - **Acceptance**: `ssh localhost -p 23234` renders TUI remotely. Middleware logs connections. Rate-limit blocks >10 conns/min.
 - **Files**: `ssh.go`
-- **Status**: Pending
+- **Status**: Complete
 
 ### C9: Inspector/DevTools ✅
 - **Deliverable**: Ctrl+D toggles debug overlay: widget tree, frame time, FPS, dirty rect count, memory stats. Per-node render cost tracking.
@@ -90,11 +90,11 @@ Make MOFU the most powerful terminal application runtime across all ecosystems (
 - **Files**: `render/profiler.go`
 - **Status**: Complete (profiler implemented)
 
-### C10: Performance Benchmarks
+### C10: Performance Benchmarks ✅
 - **Deliverable**: Go benchmark suite comparing render throughput, layout time, event dispatch latency vs Bubble Tea. Target: 2x faster render, 5x lower allocation.
 - **Acceptance**: `go test -bench=. -benchmem` shows stats. README includes benchmark table.
 - **Files**: `*_test.go`
-- **Status**: Pending
+- **Status**: Complete (tests + benchmarks in render, state, message, kernel; README benchmark table added)
 
 ### C11: Zero-Allocation Diff Renderer ✅
 - **Deliverable**: Cell-level diff engine with preallocated frame buffer, Synchronized Output (CSI 2026), SGR cache, dirty rect consolidation.

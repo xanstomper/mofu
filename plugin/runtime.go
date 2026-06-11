@@ -4,10 +4,10 @@ import (
 	"fmt"
 	"sync"
 
-	"github.com/anomalyco/mofu"
-	"github.com/anomalyco/mofu/kernel"
-	"github.com/anomalyco/mofu/message"
-	"github.com/anomalyco/mofu/state"
+	"github.com/xanstomper/mofu"
+	"github.com/xanstomper/mofu/kernel"
+	"github.com/xanstomper/mofu/message"
+	"github.com/xanstomper/mofu/state"
 )
 
 type Runtime struct {

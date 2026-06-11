@@ -1,6 +1,9 @@
 package message
 
-import "time"
+import (
+	"sync"
+	"time"
+)
 
 type Priority int
 
@@ -36,9 +39,10 @@ type Message struct {
 type Handler func(msg Message)
 
 type Bus struct {
-	input    chan Message
-	handlers map[Type][]Handler
-	done     chan struct{}
+	input      chan Message
+	handlers   map[Type][]Handler
+	handlersMu sync.RWMutex
+	done       chan struct{}
 }
 
 func NewBus(buffer int) *Bus {
@@ -60,18 +64,25 @@ func (b *Bus) Publish(msg Message) {
 }
 
 func (b *Bus) Subscribe(t Type, handler Handler) {
+	b.handlersMu.Lock()
 	b.handlers[t] = append(b.handlers[t], handler)
+	b.handlersMu.Unlock()
 }
 
 func (b *Bus) SubscribeAny(handler Handler) {
+	b.handlersMu.Lock()
 	for _, t := range AllTypes() {
-		b.Subscribe(t, handler)
+		b.handlers[t] = append(b.handlers[t], handler)
 	}
+	b.handlersMu.Unlock()
 }
 
 func (b *Bus) Dispatch(msg Message) {
-	if handlers, ok := b.handlers[msg.Type]; ok {
-		for _, h := range handlers {
+	b.handlersMu.RLock()
+	handlers := b.handlers[msg.Type]
+	b.handlersMu.RUnlock()
+	for _, h := range handlers {
+		if h != nil {
 			h(msg)
 		}
 	}

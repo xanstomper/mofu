@@ -2,46 +2,56 @@ package mofu
 
 import (
 	"context"
+	"fmt"
+	"io"
+	"log"
 	"os"
 	"os/signal"
+	"runtime"
+	"runtime/debug"
+	"strconv"
+	"strings"
 	"sync"
+	"sync/atomic"
+	"syscall"
 	"time"
 
 	"golang.org/x/term"
 
-	"github.com/anomalyco/mofu/kernel"
-	"github.com/anomalyco/mofu/message"
-	"github.com/anomalyco/mofu/state"
+	"github.com/xanstomper/mofu/kernel"
+	"github.com/xanstomper/mofu/message"
+	"github.com/xanstomper/mofu/state"
 )
 
-// Program represents a MOFU terminal application.
-// It wraps the v2 kernel.Kernel with backward-compatible Node interface support.
-type Program struct {
-	root Node
+var (
+	ErrProgramPanic  = fmt.Errorf("mofu: program experienced a panic")
+	ErrProgramKilled = fmt.Errorf("mofu: program was killed")
+	ErrInterrupted   = fmt.Errorf("mofu: program was interrupted")
+)
 
-	// v2 kernel — owns event loop, state graph, effect system, render scheduling
-	kern *kernel.Kernel
+type channelHandlers struct {
+	mu       sync.RWMutex
+	handlers []chan struct{}
+}
 
-	// Render
-	renderer      *Renderer
-	theme         *Theme
-	width, height int
+func (h *channelHandlers) add(ch chan struct{}) {
+	h.mu.Lock()
+	h.handlers = append(h.handlers, ch)
+	h.mu.Unlock()
+}
 
-	// Legacy subsystems (kept for backward compat)
-	scheduler *Scheduler
-	animator  *Animator
-	eventBus  *EventBus
-	dataStore *DataStore
-
-	running bool
-	mu      sync.Mutex
-	ctx     context.Context
-	cancel  context.CancelFunc
-
-	oldState *term.State
-	channels []OutputChannel
-	sm       *StateMachine
-	rt       *Runtime
+func (h *channelHandlers) shutdown() {
+	var wg sync.WaitGroup
+	h.mu.RLock()
+	for _, ch := range h.handlers {
+		wg.Add(1)
+		go func(ch chan struct{}) {
+			<-ch
+			wg.Done()
+		}(ch)
+	}
+	h.mu.RUnlock()
+	wg.Wait()
 }
 
 type Option func(*Program)
@@ -51,19 +61,117 @@ func WithTheme(t *Theme) Option {
 }
 
 func WithSize(w, h int) Option {
-	return func(p *Program) { p.width = w; p.height = h }
+	return func(p *Program) { p.width, p.height = w, h }
 }
 
-func WithOutput(ch OutputChannel) Option {
-	return func(p *Program) { p.channels = append(p.channels, ch) }
+func WithFPS(fps int) Option {
+	return func(p *Program) {
+		if fps > 0 && fps <= 120 {
+			p.fps = fps
+		}
+	}
 }
 
-// New creates a Program rooted at the given Node.
-// The kernel is created internally with default config.
+func WithInput(r io.Reader) Option {
+	return func(p *Program) { p.input = r }
+}
+
+func WithOutputWriter(w io.Writer) Option {
+	return func(p *Program) { p.output = w }
+}
+
+func WithoutRenderer() Option {
+	return func(p *Program) { p.disableRenderer = true }
+}
+
+func WithoutSignalHandler() Option {
+	return func(p *Program) { p.disableSignalHandler = true }
+}
+
+func WithoutCatchPanics() Option {
+	return func(p *Program) { p.disableCatchPanics = true }
+}
+
+func WithHardTabs() Option {
+	return func(p *Program) { p.useHardTabs = true }
+}
+
+func WithBackspace() Option {
+	return func(p *Program) { p.useBackspace = true }
+}
+
+func WithInputEnabled(enabled bool) Option {
+	return func(p *Program) { p.disableInput = !enabled }
+}
+
+type Program struct {
+	root Node
+	kern *kernel.Kernel
+
+	renderer      *Renderer
+	theme         *Theme
+	width, height int
+	animator      *Animator
+	eventBus      *EventBus
+	dataStore     *DataStore
+
+	running     bool
+	mu          sync.Mutex
+	ctx         context.Context
+	cancel      context.CancelFunc
+	externalCtx context.Context
+
+	oldState     *term.State
+	finished     chan struct{}
+	shutdownOnce sync.Once
+	handlers     channelHandlers
+
+	sm *StateMachine
+	rt *Runtime
+
+	fps                  int
+	disableRenderer      bool
+	disableInput         bool
+	disableSignalHandler bool
+	disableCatchPanics   bool
+	useHardTabs          bool
+	useBackspace         bool
+
+	readLoopDone chan struct{}
+	rendererDone chan struct{}
+	once         sync.Once
+
+	cancelReader cancelReader
+	input        io.Reader
+	output       io.Writer
+	logger       *log.Logger
+	environ      []string
+
+	msgs chan Msg
+	errs chan error
+}
+
+type cancelReader interface {
+	Cancel() bool
+	Close() error
+}
+
+type ioReader interface {
+	Read([]byte) (int, error)
+}
+
+type ioWriter interface {
+	Write([]byte) (int, error)
+}
+
+// New creates a new MOFU Program.
 func New(root Node, opts ...Option) *Program {
+	if root == nil {
+		panic("mofu: root model cannot be nil")
+	}
+
 	ctx, cancel := context.WithCancel(context.Background())
 
-	// Use fast-path-only kernel by default — no plugin overhead
 	k := kernel.New(kernel.Config{
 		FPSCap:       60,
 		EventBufSize: 64,
@@ -72,34 +180,58 @@ func New(root Node, opts ...Option) *Program {
 	})
 
 	p := &Program{
-		root:      root,
-		kern:      k,
-		theme:     DefaultTheme(),
-		animator:  NewAnimator(),
-		scheduler: NewScheduler(60),
-		eventBus:  NewEventBus(),
-		dataStore: NewDataStore(),
-		ctx:       ctx,
-		cancel:    cancel,
-		sm:        newStateMachine(StateInit),
-		rt:        NewRuntime("local", "program", RuntimeConfig{}),
+		root:        root,
+		kern:        k,
+		theme:       DefaultTheme(),
+		animator:    NewAnimator(),
+		ctx:         ctx,
+		cancel:      cancel,
+		finished:    make(chan struct{}),
+		errs:        make(chan error, 1),
+		msgs:        make(chan Msg, 64),
+		input:       os.Stdin,
+		output:      os.Stdout,
+		logger:      nil,
+		environ:     os.Environ(),
+		fps:         60,
+		sm:          newStateMachine(StateInit),
+		rt:          NewRuntime("local", "program", RuntimeConfig{}),
 	}
 
 	for _, opt := range opts {
 		opt(p)
 	}
 
+	if path, ok := os.LookupEnv("MOFU_TRACE"); ok && path != "" {
+		if f, err := os.OpenFile(path, os.O_RDWR|os.O_CREATE|os.O_APPEND, 0o600); err == nil {
+			p.logger = log.New(f, "mofu: ", log.LstdFlags|log.Lshortfile)
+		}
+	}
+
 	return p
 }
 
+// Run initializes the terminal and starts the MOFU event loop.
 func (p *Program) Run() error {
-	width, height, err := term.GetSize(int(os.Stdout.Fd()))
-	if err != nil {
-		width = 80
-		height = 24
+	if p.root == nil {
+		return fmt.Errorf("mofu: root model cannot be nil")
 	}
-	p.width = width
-	p.height = height
+
+	if !p.disableCatchPanics {
+		defer func() {
+			if r := recover(); r != nil {
+				p.recoverFromPanic(r)
+				p.kern.Stop()
+				p.shutdown(true)
+			}
+		}()
+	}
+
+	width, height, err := term.GetSize(int(os.Stdin.Fd()))
+	if err != nil {
+		width, height = 80, 24
+	}
+	p.width, p.height = width, height
 
 	p.oldState, err = term.MakeRaw(int(os.Stdin.Fd()))
 	if err != nil {
@@ -108,52 +240,63 @@ func (p *Program) Run() error {
 
 	p.running = true
 	p.sm.TransitionTo(StateReady)
-	p.renderer = NewRenderer(p.width, p.height, p.theme)
 
-	os.Stdout.WriteString("\x1b[2J\x1b[?25l")
+	p.kern.SetTerminalSize(p.width, p.height)
 
-	// Mount root node
-	cmds := p.root.Mount()
-	if cmds != nil {
-		go cmds()
+	if !p.disableRenderer {
+		p.renderer = NewRenderer(p.width, p.height, p.theme)
 	}
 
-	// ---------------------------------------------------------------
-	// Wire v2 kernel callbacks — this is the main integration point
-	// ---------------------------------------------------------------
+	os.Stdout.WriteString("\x1b[2J\x1b[?25l")
+	p.handlers = channelHandlers{}
+	cmds := make(chan Cmd)
+	p.finished = make(chan struct{})
+	defer close(p.finished)
+	defer p.cancel()
 
-	// Layout callback — compute widget tree layout each frame
+	if !p.disableSignalHandler {
+		p.handlers.add(p.handleSignals())
+	}
+
+	if mountCmd := p.root.Mount(); mountCmd != nil {
+		ch := make(chan struct{})
+		p.handlers.add(ch)
+		go func() {
+			defer close(ch)
+			select {
+			case cmds <- mountCmd:
+			case <-p.ctx.Done():
+			}
+		}()
+	}
+
 	p.kern.OnLayout(func() {
 		bounds := Rect{0, 0, p.width, p.height}
 		ComputeLayout(p.root, bounds)
 	})
 
-	// UI materialization callback — render widget tree each frame
 	p.kern.OnUI(func() any {
-		p.animator.Update(0)
-		ctx := &RenderContext{
-			Renderer: p.renderer,
-			Theme:    p.theme,
-			Frame:    p.kern.FrameCount(),
-			Delta:    time.Second / time.Duration(p.kern.FrameCount()),
-			Bounds:   Rect{0, 0, p.width, p.height},
+		p.animator.Update(uint64(p.kern.LastDelta().Milliseconds()))
+		if p.renderer != nil {
+			ctx := &RenderContext{
+				Renderer: p.renderer,
+				Theme:    p.theme,
+				Frame:    p.kern.FrameCount(),
+				Bounds:   Rect{0, 0, p.width, p.height},
+			}
+			p.root.Render(ctx)
 		}
-		p.root.Render(ctx)
 		return nil
 	})
 
-	// Render callback — flush diff to terminal
 	p.kern.OnRender(func(dt time.Duration) {
-		output := p.renderer.Flush()
-		if output != "" {
-			os.Stdout.WriteString(output)
-		}
+		p.flushFrame()
 	})
 
-	// Wire stdin → kernel message bus (fast path)
-	go p.stdinLoop()
+	p.kern.OnStateChange(func(id state.NodeID, oldVal, newVal any) {
+		p.root.SetDirty()
+	})
 
-	// Wire root.HandleEvent → kernel message subscribers
 	p.kern.Bus.Subscribe(message.TypeInput, func(msg message.Message) {
 		data, ok := msg.Payload.([]byte)
 		if !ok || len(data) == 0 {
@@ -163,14 +306,17 @@ func (p *Program) Run() error {
 		ev := p.parseInput(data)
 		p.mu.Unlock()
 		if ev != nil {
-			p.handleEvent(*ev)
+			p.dispatchEvent(*ev)
 		}
 	})
 
 	p.kern.Bus.Subscribe(message.TypeCommand, func(msg message.Message) {
 		p.mu.Lock()
-		ev := Event{Type: EventSystem, Data: msg.Payload, Time: time.Now()}
-		cmd := p.root.HandleEvent(ev)
+		cmd := p.root.HandleEvent(Event{
+			Type: EventSystem,
+			Data: msg.Payload,
+			Time: time.Now(),
+		})
 		p.mu.Unlock()
 		if cmd != nil {
 			go func() {
@@ -183,121 +329,259 @@ func (p *Program) Run() error {
 
 	p.kern.Bus.Subscribe(message.TypeResize, func(msg message.Message) {
 		if dims, ok := msg.Payload.([2]int); ok {
-			p.width = dims[0]
-			p.height = dims[1]
+			p.width, p.height = dims[0], dims[1]
 			p.renderer.Resize(p.width, p.height)
+			p.kern.SetTerminalSize(p.width, p.height)
 		}
 	})
 
-	// State change callback — mark widgets dirty when state changes
-	p.kern.OnStateChange(func(id state.NodeID, oldVal, newVal any) {
-		p.root.SetDirty()
-	})
-
-	// ---------------------------------------------------------------
-	// Start the kernel — this blocks until Stop
-	// ---------------------------------------------------------------
+	go p.stdinLoop()
+	p.handlers.add(p.handleCommands(cmds))
 	p.kern.Init()
-
-	// Set up signal handling
-	sigCh := make(chan os.Signal, 1)
-	signal.Notify(sigCh, os.Interrupt)
-
-	go func() {
-		<-sigCh
-		p.Quit()
-	}()
-
-	defer func() {
-		term.Restore(int(os.Stdin.Fd()), p.oldState)
-		os.Stdout.WriteString("\x1b[?25h\x1b[2J\x1b[1;1H")
-	}()
-
+	p.renderFrame()
 	p.kern.Run()
 
+	p.restoreTerminal()
 	return nil
 }
 
-// stdinLoop reads raw bytes from stdin and publishes them to the kernel message bus.
-func (p *Program) stdinLoop() {
-	buf := make([]byte, 128)
-	for p.running {
-		n, err := os.Stdin.Read(buf)
-		if err != nil || n == 0 {
+func (p *Program) handleCommands(cmds chan Cmd) chan struct{} {
+	ch := make(chan struct{})
+	go func() {
+		defer close(ch)
+		for {
+			select {
+			case <-p.ctx.Done():
+				return
+			case cmd, ok := <-cmds:
+				if !ok || cmd == nil {
+					continue
+				}
+				go func() {
+					if !p.disableCatchPanics {
+						defer func() {
+							if r := recover(); r != nil {
+								p.recoverFromGoPanic(r)
+							}
+						}()
+					}
+					result := cmd()
+					switch msg := result.(type) {
+					case BatchMsg:
+						p.execBatch(msg)
+					case SequenceMsg:
+						p.execSequence(msg)
+					default:
+						if result != nil {
+							p.kern.Bus.Publish(message.NewMessage(message.TypeCustom, result))
+						}
+					}
+				}()
+			}
+		}
+	}()
+	return ch
+}
+
+func (p *Program) execBatch(cmds BatchMsg) {
+	var wg sync.WaitGroup
+	for _, cmd := range cmds {
+		if cmd == nil {
 			continue
 		}
-		data := make([]byte, n)
-		copy(data, buf[:n])
-		p.kern.Bus.Publish(message.NewInput(data))
-	}
-}
-
-// parseInput converts raw stdin bytes into an Event for the Node tree.
-func (p *Program) parseInput(data []byte) *Event {
-	if len(data) == 0 {
-		return nil
-	}
-	if data[0] == 0x1b && len(data) > 1 {
-		return p.parseEscapeSeq(data)
-	}
-	ev := Event{
-		Type: EventKeyPress,
-		Data: KeyEvent{Runes: data},
-		Time: time.Now(),
-	}
-	p.eventBus.Publish(ev)
-	return &ev
-}
-
-func (p *Program) parseEscapeSeq(data []byte) *Event {
-	if len(data) >= 3 && data[1] == '[' {
-		var key Key
-		switch data[2] {
-		case 'A':
-			key = KeyUp
-		case 'B':
-			key = KeyDown
-		case 'C':
-			key = KeyRight
-		case 'D':
-			key = KeyLeft
-		case 'H':
-			key = KeyHome
-		case 'F':
-			key = KeyEnd
-		default:
-			if data[2] >= '1' && data[2] <= '6' && len(data) >= 4 {
-				switch data[2] {
-				case '1':
-					if len(data) >= 4 && data[3] == '~' {
-						key = KeyHome
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			if !p.disableCatchPanics {
+				defer func() {
+					if r := recover(); r != nil {
+						p.recoverFromGoPanic(r)
 					}
-				case '2':
-					key = KeyF1
-				case '3':
-					key = KeyF2
-				case '4':
-					key = KeyEnd
-				case '5':
-					key = KeyPgUp
-				case '6':
-					key = KeyPgDn
+				}()
+			}
+			result := cmd()
+			if result != nil {
+				p.kern.Bus.Publish(message.NewMessage(message.TypeCustom, result))
+			}
+		}()
+	}
+	wg.Wait()
+}
+
+func (p *Program) execSequence(cmds SequenceMsg) {
+	for _, cmd := range cmds {
+		if cmd == nil {
+			continue
+		}
+		result := cmd()
+		switch msg := result.(type) {
+		case BatchMsg:
+			p.execBatch(msg)
+		case SequenceMsg:
+			p.execSequence(msg)
+		default:
+			if result != nil {
+				p.kern.Bus.Publish(message.NewMessage(message.TypeCustom, result))
+			}
+		}
+	}
+}
+
+func (p *Program) recoverFromPanic(r interface{}) {
+	p.kern.Stop()
+	p.shutdown(true)
+	rec := strings.ReplaceAll(fmt.Sprintf("%s", r), "\n", "\r\n")
+	fmt.Fprintf(os.Stderr, "\r\nmofu: panic\r\n\r\n%s\r\n\r\n", rec)
+	stack := strings.ReplaceAll(fmt.Sprintf("%s\n", debug.Stack()), "\n", "\r\n")
+	fmt.Fprint(os.Stderr, stack)
+	if v, err := strconv.ParseBool(os.Getenv("MOFU_TRACE")); err == nil && v {
+		f, err := os.Create(fmt.Sprintf("mofu-panic-%d.log", time.Now().Unix()))
+		if err == nil {
+			defer f.Close()
+			fmt.Fprintln(f, rec)
+			fmt.Fprintln(f, stack)
+		}
+	}
+}
+
+func (p *Program) recoverFromGoPanic(r interface{}) {
+	p.cancel()
+	rec := strings.ReplaceAll(fmt.Sprintf("%s", r), "\n", "\r\n")
+	fmt.Fprintf(os.Stderr, "\r\nmofu: goroutine panic\r\n\r\n%s\r\n\r\n", rec)
+}
+
+func (p *Program) handleSignals() chan struct{} {
+	ch := make(chan struct{})
+	go func() {
+		defer close(ch)
+		sig := make(chan os.Signal, 1)
+		signal.Notify(sig, syscall.SIGINT, syscall.SIGTERM)
+		defer signal.Stop(sig)
+		for {
+			select {
+			case <-p.ctx.Done():
+				return
+			case s := <-sig:
+				if atomic.LoadUint32(&ignoreSignals) == 0 {
+					switch s {
+					case syscall.SIGINT:
+						p.Send(InterruptMsg{})
+					default:
+						p.Send(QuitMsg{})
+					}
 				}
 			}
 		}
-		ev := Event{
-			Type: EventKeyPress,
-			Data: KeyEvent{Runes: data, Key: key},
-			Time: time.Now(),
-		}
-		p.eventBus.Publish(ev)
-		return &ev
-	}
-	return nil
+	}()
+	return ch
 }
 
-// handleEvent dispatches an Event to the root Node tree.
-func (p *Program) handleEvent(ev Event) {
+// suspend is a no-op on Windows.
+func (p *Program) suspend() {}
+
+func (p *Program) renderFrame() {
+	if p.renderer == nil || p.root == nil {
+		return
+	}
+	ctx := &RenderContext{
+		Renderer: p.renderer,
+		Theme:    p.theme,
+		Frame:    p.kern.FrameCount(),
+		Bounds:   Rect{0, 0, p.width, p.height},
+	}
+	p.root.Render(ctx)
+	output := p.renderer.Flush()
+	if output != "" {
+		p.output.Write([]byte(output))
+	}
+}
+
+// flushFrame only flushes the renderer diff to the terminal.
+// The scene tree is already rendered by the kernel's onUI callback.
+func (p *Program) flushFrame() {
+	if p.renderer == nil {
+		return
+	}
+	output := p.renderer.Flush()
+	if output != "" {
+		p.output.Write([]byte(output))
+	}
+}
+
+func (p *Program) restoreTerminal() {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	if p.oldState != nil {
+		_ = term.Restore(int(os.Stdin.Fd()), p.oldState)
+		p.oldState = nil
+	}
+	p.output.Write([]byte("\x1b[?25h\x1b[2J\x1b[1;1H"))
+	runtime.GC()
+}
+
+func (p *Program) shutdown(kill bool) {
+	p.shutdownOnce.Do(func() {
+		p.cancel()
+		p.handlers.shutdown()
+		if p.cancelReader != nil {
+			p.cancelReader.Cancel()
+			p.cancelReader.Close()
+		}
+		p.kern.Stop()
+		p.restoreTerminal()
+	})
+}
+
+func (p *Program) stdinLoop() {
+	buf := make([]byte, 128)
+	batchBuf := make([]byte, 0, 512)
+	batchTimer := time.NewTimer(0)
+	if !batchTimer.Stop() {
+		<-batchTimer.C
+	}
+	batching := false
+
+	for atomic.LoadUint32(&ignoreSignals) == 0 {
+		n, err := p.input.Read(buf)
+		if err != nil || n == 0 {
+			continue
+		}
+
+		if !batching {
+			batchBuf = append(batchBuf[:0], buf[:n]...)
+			batching = true
+			batchTimer.Reset(time.Millisecond)
+			continue
+		}
+
+		batchBuf = append(batchBuf, buf[:n]...)
+		select {
+		case <-batchTimer.C:
+			if len(batchBuf) > 0 {
+				data := make([]byte, len(batchBuf))
+				copy(data, batchBuf)
+				p.kern.Bus.Publish(message.NewInput(data))
+				batchBuf = batchBuf[:0]
+			}
+			batching = false
+		default:
+		}
+	}
+
+	if len(batchBuf) > 0 {
+		data := make([]byte, len(batchBuf))
+		copy(data, batchBuf)
+		p.kern.Bus.Publish(message.NewInput(data))
+	}
+	batchTimer.Stop()
+
+	if p.readLoopDone != nil {
+		close(p.readLoopDone)
+	}
+}
+
+func (p *Program) dispatchEvent(ev Event) {
+	p.eventBus.Publish(ev)
 	cmd := p.root.HandleEvent(ev)
 	if cmd != nil {
 		go func() {
@@ -308,36 +592,31 @@ func (p *Program) handleEvent(ev Event) {
 	}
 }
 
-func (p *Program) Quit() {
-	p.mu.Lock()
-	defer p.mu.Unlock()
-	if !p.running {
-		return
-	}
-	p.running = false
-	p.cancel()
-	if p.sm != nil {
-		p.sm.TransitionTo(StateStopping)
-		p.sm.TransitionTo(StateDone)
-	}
-	p.kern.Stop()
-	p.root.Unmount()
-}
-
 func (p *Program) Send(msg Msg) {
-	p.kern.Bus.Publish(message.NewMessage(message.TypeCommand, msg))
+	select {
+	case <-p.ctx.Done():
+	case p.msgs <- msg:
+	}
 }
 
-func (p *Program) Resize(w, h int) {
-	p.kern.Bus.Publish(message.Message{
-		Type:    message.TypeResize,
-		Payload: [2]int{w, h},
-	})
+func (p *Program) Kill() {
+	p.shutdown(true)
 }
+
+func (p *Program) Wait() {
+	<-p.finished
+}
+
+func (p *Program) SetDirty()   { p.root.SetDirty() }
+func (p *Program) Dirty() bool { return p.root.Dirty() }
+func (p *Program) Width() int  { return p.width }
+func (p *Program) Height() int { return p.height }
 
 func (p *Program) Theme() *Theme          { return p.theme }
 func (p *Program) Renderer() *Renderer    { return p.renderer }
-func (p *Program) Scheduler() *Scheduler  { return p.scheduler }
 func (p *Program) EventBus() *EventBus    { return p.eventBus }
 func (p *Program) DataStore() *DataStore  { return p.dataStore }
 func (p *Program) Kernel() *kernel.Kernel { return p.kern }
+func (p *Program) Model() Model           { return p.root }
+
+var ignoreSignals uint32

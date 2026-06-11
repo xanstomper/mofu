@@ -6,7 +6,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/anomalyco/mofu/message"
+	"github.com/xanstomper/mofu/message"
 )
 
 // State is the lifecycle state of the Program.
@@ -373,15 +373,12 @@ func (dn *DataNode) Set(val any) {
 	}
 	dn.mu.Unlock()
 
-	for owner, cbs := range listeners {
+	for _, cbs := range listeners {
 		for _, cb := range cbs {
 			if cb == nil {
 				continue
 			}
-			go func(o string, handler DataCallback) {
-				_ = o
-				handler(old, val)
-			}(owner, cb)
+			cb(old, val)
 		}
 	}
 }
@@ -432,7 +429,7 @@ func (dn *DataNode) UnsubscribePattern(id uint64) {
 type StateChangeListener func(path string, oldVal, newVal any)
 
 // StateGraph holds the application state as a path-addressed reactive tree.
-// It is the core differentiator from Bubble Tea / Ratatui / Ink: widgets only
+// It is the core differentiator from other TUI frameworks: widgets only
 // redraw when their subscribed paths change.
 type StateGraph struct {
 	mu       sync.RWMutex

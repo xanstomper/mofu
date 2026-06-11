@@ -6,7 +6,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/anomalyco/mofu/message"
+	"github.com/xanstomper/mofu/message"
 )
 
 type MouseMode int

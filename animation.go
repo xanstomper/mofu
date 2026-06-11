@@ -3,191 +3,213 @@ package mofu
 import (
 	"math"
 	"sync"
-	"time"
 )
 
-type EasingFunc func(t float64) float64
+// ---------------------------------------------------------------------------
+// Vec2 — 2D point for layout and animation
+// ---------------------------------------------------------------------------
 
-var (
-	EaseLinear = func(t float64) float64 { return t }
-
-	EaseInQuad    = func(t float64) float64 { return t * t }
-	EaseOutQuad   = func(t float64) float64 { return t * (2 - t) }
-	EaseInOutQuad = func(t float64) float64 {
-		if t < 0.5 {
-			return 2 * t * t
-		}
-		return -1 + (4-2*t)*t
-	}
-
-	EaseInCubic  = func(t float64) float64 { return t * t * t }
-	EaseOutCubic = func(t float64) float64 {
-		t--
-		return t*t*t + 1
-	}
-	EaseInOutCubic = func(t float64) float64 {
-		if t < 0.5 {
-			return 4 * t * t * t
-		}
-		t = 2*t - 2
-		return t*t*t/2 + 1
-	}
-
-	EaseInElastic = func(t float64) float64 {
-		if t == 0 || t == 1 {
-			return t
-		}
-		return -math.Pow(2, 10*(t-1)) * math.Sin((t-1.1)*5*math.Pi)
-	}
-	EaseOutElastic = func(t float64) float64 {
-		if t == 0 || t == 1 {
-			return t
-		}
-		return math.Pow(2, -10*t)*math.Sin((t-0.1)*5*math.Pi) + 1
-	}
-
-	EaseInBounce  = func(t float64) float64 { return 1 - EaseOutBounce(1-t) }
-	EaseOutBounce = func(t float64) float64 {
-		if t < 1/2.75 {
-			return 7.5625 * t * t
-		} else if t < 2/2.75 {
-			t -= 1.5 / 2.75
-			return 7.5625*t*t + 0.75
-		} else if t < 2.5/2.75 {
-			t -= 2.25 / 2.75
-			return 7.5625*t*t + 0.9375
-		}
-		t -= 2.625 / 2.75
-		return 7.5625*t*t + 0.984375
-	}
-
-	EaseOutBack = func(t float64) float64 {
-		t--
-		return t*t*(2.70158*t+1.70158) + 1
-	}
-	EaseInBack = func(t float64) float64 {
-		return t * t * (2.70158*t - 1.70158)
-	}
-
-	EaseSpring = func(t float64) float64 {
-		return math.Pow(2, -10*t) * math.Sin((t-0.075)*2*math.Pi/0.3)
-	}
-)
-
-type Tween struct {
-	From, To   float64
-	Duration   time.Duration
-	Easing     EasingFunc
-	OnUpdate   func(value float64)
-	OnComplete func()
-	Playing    bool
-	Paused     bool
-	elapsed    time.Duration
+// Vec2 is a 2D point used by layout, scroll, and animation systems.
+type Vec2 struct {
+	X, Y float64
 }
 
+// Vec2XY creates a Vec2 from x, y coordinates.
+func Vec2XY(x, y float64) Vec2 { return Vec2{X: x, Y: y} }
+
+// ---------------------------------------------------------------------------
+// Easing Functions
+// ---------------------------------------------------------------------------
+// Animator (Anthology Ch.6 §6.1)
+// runtime.go expects: type Animator struct, func NewAnimator() *Animator,
+// method func (a *Animator) Update(deltaMs uint64)
+// ---------------------------------------------------------------------------
+
+// Animator manages active tween/spring animations for a Program.
 type Animator struct {
-	tweens []*Tween
-	mu     sync.Mutex
+	mu       sync.Mutex
+	nextID   uint64
+	tweens   map[uint64]*TweenEntry
+	springs  map[uint64]*SpringEntry
+	finished []uint64 // IDs removed this tick (for reuse safety)
 }
 
+// TweenEntry holds state for a single tween.
+type TweenEntry struct {
+	From, To   float64
+	DurationMs uint64
+	ElapsedMs  uint64
+	Easing     EasingFn
+	Apply      func(v float64) // callback to apply value each frame
+}
+
+// SpringEntry holds state for a single spring.
+type SpringEntry struct {
+	Spring *Spring
+}
+
+// NewAnimator returns an empty Animator.
 func NewAnimator() *Animator {
-	return &Animator{}
-}
-
-func (a *Animator) Add(t *Tween) {
-	a.mu.Lock()
-	defer a.mu.Unlock()
-	t.Playing = true
-	t.elapsed = 0
-	a.tweens = append(a.tweens, t)
-}
-
-func (a *Animator) Remove(t *Tween) {
-	a.mu.Lock()
-	defer a.mu.Unlock()
-	for i, tw := range a.tweens {
-		if tw == t {
-			a.tweens = append(a.tweens[:i], a.tweens[i+1:]...)
-			return
-		}
+	return &Animator{
+		tweens:  make(map[uint64]*TweenEntry),
+		springs: make(map[uint64]*SpringEntry),
 	}
 }
 
-func (a *Animator) Clear() {
+// Update advances all animations by deltaMs milliseconds.
+// For completed tweens, Apply is called with the final value before removal.
+// Returns IDs of animations that finished this tick.
+func (a *Animator) Update(deltaMs uint64) []uint64 {
 	a.mu.Lock()
 	defer a.mu.Unlock()
-	a.tweens = nil
-}
 
-func (a *Animator) Update(delta time.Duration) {
-	a.mu.Lock()
-	defer a.mu.Unlock()
-	var remaining []*Tween
-	for _, t := range a.tweens {
-		if !t.Playing || t.Paused {
-			remaining = append(remaining, t)
-			continue
-		}
-		t.elapsed += delta
-		if t.elapsed >= t.Duration {
-			if t.OnUpdate != nil {
-				t.OnUpdate(t.To)
+	if deltaMs == 0 {
+		return nil
+	}
+
+	var done []uint64
+
+	for id, tw := range a.tweens {
+		tw.ElapsedMs += deltaMs
+		if tw.ElapsedMs >= tw.DurationMs {
+			if tw.Apply != nil {
+				tw.Apply(tw.To)
 			}
-			if t.OnComplete != nil {
-				t.OnComplete()
-			}
-			continue
+			delete(a.tweens, id)
+			done = append(done, id)
 		}
-		frac := float64(t.elapsed) / float64(t.Duration)
-		val := t.From + (t.To-t.From)*t.Easing(frac)
-		if t.OnUpdate != nil {
-			t.OnUpdate(val)
+	}
+	for id, se := range a.springs {
+		se.Spring.Advance(deltaMs)
+		if se.Spring.IsAtRest() {
+			delete(a.springs, id)
+			done = append(done, id)
 		}
-		remaining = append(remaining, t)
 	}
-	a.tweens = remaining
+	if len(done) > 0 {
+		a.finished = append(a.finished[:0], done...)
+	}
+	return done
 }
 
-func FadeIn(dur time.Duration, node Node) *Tween {
-	s := node.Style()
-	return &Tween{
-		From:     0,
-		To:       1,
-		Duration: dur,
-		Easing:   EaseInOutCubic,
-		OnUpdate: func(val float64) { s.Opacity = val; node.SetDirty() },
+// AddTween registers a tween and returns its ID.
+// Caller supplies Apply(cb) to receive each frame's value.
+func (a *Animator) AddTween(from, to float64, durationMs uint64, easing EasingFn, apply func(v float64)) uint64 {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+
+	if easing == nil {
+		easing = EaseLinear
+	}
+	id := a.nextID
+	a.nextID++
+
+	a.tweens[id] = &TweenEntry{
+		From:       from,
+		To:         to,
+		DurationMs: durationMs,
+		ElapsedMs:  0,
+		Easing:     easing,
+		Apply:      apply,
+	}
+	return id
+}
+
+// AddSpring registers a spring animation and returns its ID.
+func (a *Animator) AddSpring(s *Spring) uint64 {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+
+	id := a.nextID
+	a.nextID++
+
+	a.springs[id] = &SpringEntry{Spring: s}
+	return id
+}
+
+// Remove cancels an animation by ID.
+func (a *Animator) Remove(id uint64) {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	delete(a.tweens, id)
+	delete(a.springs, id)
+}
+
+// CurrentValue returns the current interpolated value for a tween by ID.
+// Returns (0, false) if not found or not a tween.
+func (a *Animator) CurrentValue(id uint64) (float64, bool) {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+
+	tw, ok := a.tweens[id]
+	if !ok {
+		return 0, false
+	}
+	prog := float64(tw.ElapsedMs) / float64(tw.DurationMs)
+	if prog > 1 {
+		prog = 1
+	}
+	if prog < 0 {
+		prog = 0
+	}
+	return tw.From + (tw.To-tw.From)*tw.Easing(prog), true
+}
+
+// ---------------------------------------------------------------------------
+// Easing Functions
+// ---------------------------------------------------------------------------
+
+// EasingFn maps normalised progress t∈[0,1] to [0,1].
+type EasingFn func(t float64) float64
+
+// EaseLinear is the default easing — no acceleration.
+func EaseLinear(t float64) float64 { return t }
+
+// ---------------------------------------------------------------------------
+// Spring — damped spring physics for smooth motion
+// ---------------------------------------------------------------------------
+
+// Spring provides damped-spring interpolation for a single float64 value.
+type Spring struct {
+	Current   float64
+	Target    float64
+	Velocity  float64
+	Stiffness float64
+	Damping   float64
+	Mass      float64
+}
+
+// NewSpring creates a spring anchored at current.
+func NewSpring(current float64) *Spring {
+	return &Spring{
+		Current:   current,
+		Target:    current,
+		Stiffness: 120,
+		Damping:   14,
+		Mass:      1,
 	}
 }
 
-func FadeOut(dur time.Duration, node Node) *Tween {
-	s := node.Style()
-	return &Tween{
-		From:     1,
-		To:       0,
-		Duration: dur,
-		Easing:   EaseInCubic,
-		OnUpdate: func(val float64) { s.Opacity = val; node.SetDirty() },
+// SetTarget changes the spring's resting value.
+func (s *Spring) SetTarget(t float64) { s.Target = t }
+
+// Advance advances the spring simulation by deltaMs (milliseconds).
+func (s *Spring) Advance(deltaMs uint64) {
+	dt := float64(deltaMs) / 1000
+	if dt <= 0 {
+		return
 	}
+
+	displacement := s.Current - s.Target
+	springForce := -s.Stiffness * displacement
+	dampingForce := -s.Damping * s.Velocity
+	acc := (springForce + dampingForce) / s.Mass
+
+	s.Velocity += acc * dt
+	s.Current += s.Velocity * dt
 }
 
-func SlideInX(dur time.Duration, distance int, node Node) *Tween {
-	s := node.Style()
-	return &Tween{
-		From:     float64(distance),
-		To:       0,
-		Duration: dur,
-		Easing:   EaseOutCubic,
-		OnUpdate: func(val float64) { s.OffsetX = int(val); node.SetDirty() },
-	}
-}
-
-func SlideInY(dur time.Duration, distance int, node Node) *Tween {
-	s := node.Style()
-	return &Tween{
-		From:     float64(distance),
-		To:       0,
-		Duration: dur,
-		Easing:   EaseOutCubic,
-		OnUpdate: func(val float64) { s.OffsetY = int(val); node.SetDirty() },
-	}
+// IsAtRest reports whether the spring has settled near its target.
+func (s *Spring) IsAtRest() bool {
+	return math.Abs(s.Velocity) < 0.001 && math.Abs(s.Current-s.Target) < 0.001
 }

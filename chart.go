@@ -85,7 +85,6 @@ func RenderChart(r *Renderer, chart *Chart, x, y int) {
 	xRange := xMax - xMin
 	yRange := yMax - yMin
 
-	drawBorder(r, Rect{X: x, Y: y, Width: chart.Width, Height: chart.Height}, BorderNormal)
 
 	for _, series := range chart.Series {
 		switch chart.Type {

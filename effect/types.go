@@ -14,6 +14,7 @@ const (
 	TypeSubprocess Type = "subprocess"
 	TypeFileWatch  Type = "filewatch"
 	TypeLog        Type = "log"
+	TypeMessage    Type = "message"
 )
 
 type Effect struct {
