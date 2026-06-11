@@ -61,21 +61,10 @@ func (c *counter) HandleEvent(e mofu.Event) mofu.Cmd {
 go run main.go
 ```
 
-## Demo
-
-Run the interactive showcase:
-
-```bash
-cd demo && go run .
-```
-
-**5 tabs** with live-updating dashboard, process list, log stream, todo tracker, and widget showcase. Navigate with arrow keys, interact with each panel.
-
 ## Examples (25)
 
 | App | Run | Description |
 |-----|-----|-------------|
-| **demo** | `cd demo && go run .` | Full interactive showcase |
 | **counter** | `cd examples/counter && go run .` | Minimal counter — starter template |
 | **dashboard** | `cd examples/dashboard && go run .` | Multi-panel system dashboard |
 | **chat** | `cd examples/chat && go run .` | Chat interface with messages |
