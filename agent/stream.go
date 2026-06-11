@@ -118,6 +118,15 @@ func NewSSEParser() *SSEParser {
 // Feed adds raw bytes. Returns parsed events.
 func (p *SSEParser) Feed(raw []byte) []SSEEvent {
 	p.buf = append(p.buf, raw...)
+
+	// Cap buffer at 1MB to prevent OOM from malformed streams
+	const maxBuf = 1 << 20
+	if len(p.buf) > maxBuf {
+		// Keep last 4KB (likely contains the start of an event)
+		keep := len(p.buf) - 4096
+		p.buf = p.buf[keep:]
+	}
+
 	var events []SSEEvent
 
 	for {
@@ -216,13 +225,15 @@ type SSEClient struct {
 }
 
 func NewSSEClient(url string) *SSEClient {
-	return &SSEClient{
+	c := &SSEClient{
 		URL:        url,
 		Headers:    make(map[string]string),
 		Timeout:    30 * time.Second,
 		MaxRetries: 3,
 		cancel:     make(chan struct{}),
 	}
+	c.client = &http.Client{Timeout: c.Timeout}
+	return c
 }
 
 func (c *SSEClient) Start() error {
@@ -232,6 +243,7 @@ func (c *SSEClient) Start() error {
 		return nil
 	}
 	c.running = true
+	c.cancel = make(chan struct{})
 	c.mu.Unlock()
 
 	go c.run()
@@ -305,7 +317,7 @@ func (c *SSEClient) connect() error {
 		req.Header.Set(k, v)
 	}
 
-	resp, err := http.DefaultClient.Do(req)
+	resp, err := c.client.Do(req)
 	if err != nil {
 		return err
 	}

@@ -125,7 +125,8 @@ func (a *APIStream) Stream(messages []Message) <-chan StreamChunk {
 		defer resp.Body.Close()
 
 		if resp.StatusCode != 200 {
-			errBody, _ := io.ReadAll(resp.Body)
+			errBody, _ := io.ReadAll(io.LimitReader(resp.Body, 4096))
+			resp.Body.Close()
 			ch <- StreamChunk{Error: fmt.Errorf("API error %d: %s", resp.StatusCode, string(errBody))}
 			return
 		}
