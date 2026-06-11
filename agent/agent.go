@@ -1,3 +1,23 @@
+// Package agent provides AI-native TUI components for agentic workflows.
+//
+// It includes components for displaying agent state, tool calls, streaming output,
+// multi-agent orchestration, and cost tracking. The framework handles API streaming
+// (OpenAI, Anthropic, Ollama), virtual scrolling for massive datasets, and provides
+// a polished panel-based layout system.
+//
+// Basic usage:
+//
+//	a := agent.NewAgent("my-agent")
+//	a.BeginToolCall("bash", "ls -la")
+//	a.EndToolCall("file1.go file2.go", nil)
+//	a.AppendStream("Here are the files...")
+//	a.FinishStep(42, 0.001)
+//
+// For real API streaming:
+//
+//	a := agent.NewInstantAgent("assistant", apiURL, apiKey, model)
+//	a.OnToken(func(token string) { /* render instantly */ })
+//	a.Send("What is 2+2?")
 package agent
 
 import (
