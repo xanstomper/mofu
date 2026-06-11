@@ -397,9 +397,13 @@ func (lc *LayoutCache) Invalidate() {
 
 // HashState computes a fast hash of the current state graph for layout caching.
 // Uses sorted keys for deterministic results.
+// Optimized to minimize allocations.
 func HashState(g *state.Graph) uint64 {
 	snap := g.Snapshot()
 	h := fnv.New64a()
+
+	// Pre-allocate buffer for ID bytes
+	var idBuf [8]byte
 
 	// Sort keys for deterministic hash
 	ids := make([]state.NodeID, 0, len(snap))
@@ -409,13 +413,26 @@ func HashState(g *state.Graph) uint64 {
 	sort.Slice(ids, func(i, j int) bool { return ids[i] < ids[j] })
 
 	for _, id := range ids {
-		h.Write([]byte{byte(id >> 56), byte(id >> 48), byte(id >> 40), byte(id >> 32),
-			byte(id >> 24), byte(id >> 16), byte(id >> 8), byte(id)})
+		idBuf[0] = byte(id >> 56)
+		idBuf[1] = byte(id >> 48)
+		idBuf[2] = byte(id >> 40)
+		idBuf[3] = byte(id >> 32)
+		idBuf[4] = byte(id >> 24)
+		idBuf[5] = byte(id >> 16)
+		idBuf[6] = byte(id >> 8)
+		idBuf[7] = byte(id)
+		h.Write(idBuf[:])
+
 		val := snap[id]
 		if s, ok := val.(string); ok {
 			h.Write([]byte(s))
 		} else if n, ok := val.(int); ok {
-			h.Write([]byte{byte(n >> 24), byte(n >> 16), byte(n >> 8), byte(n)})
+			var valBuf [4]byte
+			valBuf[0] = byte(n >> 24)
+			valBuf[1] = byte(n >> 16)
+			valBuf[2] = byte(n >> 8)
+			valBuf[3] = byte(n)
+			h.Write(valBuf[:])
 		}
 	}
 	return h.Sum64()

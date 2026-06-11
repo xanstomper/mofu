@@ -273,7 +273,7 @@ func ProgramState(p *Program) State {
 	p.mu.Lock()
 	defer p.mu.Unlock()
 
-	if !p.running {
+	if !p.running.Load() {
 		return StateInit
 	}
 	return StateRunning

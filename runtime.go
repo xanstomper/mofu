@@ -61,7 +61,7 @@ func WithTheme(t *Theme) Option {
 }
 
 func WithSize(w, h int) Option {
-	return func(p *Program) { p.width, p.height = w, h }
+	return func(p *Program) { p.width.Store(int32(w)); p.height.Store(int32(h)) }
 }
 
 func WithFPS(fps int) Option {
@@ -110,12 +110,12 @@ type Program struct {
 
 	renderer      *Renderer
 	theme         *Theme
-	width, height int
+	width, height atomic.Int32
 	animator      *Animator
 	eventBus      *EventBus
 	dataStore     *DataStore
 
-	running     bool
+	running     atomic.Bool
 	mu          sync.Mutex
 	ctx         context.Context
 	cancel      context.CancelFunc
@@ -231,20 +231,21 @@ func (p *Program) Run() error {
 	if err != nil {
 		width, height = 80, 24
 	}
-	p.width, p.height = width, height
+	p.width.Store(int32(width))
+	p.height.Store(int32(height))
 
 	p.oldState, err = term.MakeRaw(int(os.Stdin.Fd()))
 	if err != nil {
 		return err
 	}
 
-	p.running = true
+	p.running.Store(true)
 	p.sm.TransitionTo(StateReady)
 
-	p.kern.SetTerminalSize(p.width, p.height)
+	p.kern.SetTerminalSize(int(p.width.Load()), int(p.height.Load()))
 
 	if !p.disableRenderer {
-		p.renderer = NewRenderer(p.width, p.height, p.theme)
+		p.renderer = NewRenderer(int(p.width.Load()), int(p.height.Load()), p.theme)
 	}
 
 	os.Stdout.WriteString("\x1b[2J\x1b[?25l")
@@ -271,7 +272,7 @@ func (p *Program) Run() error {
 	}
 
 	p.kern.OnLayout(func() {
-		bounds := Rect{0, 0, p.width, p.height}
+		bounds := Rect{0, 0, int(p.width.Load()), int(p.height.Load())}
 		ComputeLayout(p.root, bounds)
 	})
 
@@ -282,7 +283,7 @@ func (p *Program) Run() error {
 				Renderer: p.renderer,
 				Theme:    p.theme,
 				Frame:    p.kern.FrameCount(),
-				Bounds:   Rect{0, 0, p.width, p.height},
+				Bounds:   Rect{0, 0, int(p.width.Load()), int(p.height.Load())},
 			}
 			p.root.Render(ctx)
 		}
@@ -329,9 +330,10 @@ func (p *Program) Run() error {
 
 	p.kern.Bus.Subscribe(message.TypeResize, func(msg message.Message) {
 		if dims, ok := msg.Payload.([2]int); ok {
-			p.width, p.height = dims[0], dims[1]
-			p.renderer.Resize(p.width, p.height)
-			p.kern.SetTerminalSize(p.width, p.height)
+			p.width.Store(int32(dims[0]))
+			p.height.Store(int32(dims[1]))
+			p.renderer.Resize(dims[0], dims[1])
+			p.kern.SetTerminalSize(dims[0], dims[1])
 		}
 	})
 
@@ -487,7 +489,7 @@ func (p *Program) renderFrame() {
 		Renderer: p.renderer,
 		Theme:    p.theme,
 		Frame:    p.kern.FrameCount(),
-		Bounds:   Rect{0, 0, p.width, p.height},
+		Bounds:   Rect{0, 0, int(p.width.Load()), int(p.height.Load())},
 	}
 	p.root.Render(ctx)
 	output := p.renderer.Flush()
@@ -609,8 +611,8 @@ func (p *Program) Wait() {
 
 func (p *Program) SetDirty()   { p.root.SetDirty() }
 func (p *Program) Dirty() bool { return p.root.Dirty() }
-func (p *Program) Width() int  { return p.width }
-func (p *Program) Height() int { return p.height }
+func (p *Program) Width() int  { return int(p.width.Load()) }
+func (p *Program) Height() int { return int(p.height.Load()) }
 
 func (p *Program) Theme() *Theme          { return p.theme }
 func (p *Program) Renderer() *Renderer    { return p.renderer }
