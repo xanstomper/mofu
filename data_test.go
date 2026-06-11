@@ -127,15 +127,15 @@ func TestBatchCoalescer(t *testing.T) {
 	sig := mofu.NewSignal(0)
 	batch := mofu.NewBatchCoalescer(sig, 10*time.Millisecond)
 
-	// Add multiple values
 	batch.Add(1)
 	batch.Add(2)
 	batch.Add(3)
 
-	// Wait for batch to flush
-	time.Sleep(20 * time.Millisecond)
+	deadline := time.Now().Add(500 * time.Millisecond)
+	for sig.Get() != 3 && time.Now().Before(deadline) {
+		time.Sleep(5 * time.Millisecond)
+	}
 
-	// Should have the last value
 	if sig.Get() != 3 {
 		t.Errorf("expected 3, got %d", sig.Get())
 	}
@@ -144,8 +144,10 @@ func TestBatchCoalescer(t *testing.T) {
 func TestStream(t *testing.T) {
 	stream := mofu.NewStream[int]("test", 10)
 
-	// Test send/receive
+	var wg sync.WaitGroup
+	wg.Add(1)
 	go func() {
+		defer wg.Done()
 		stream.Send(1)
 		stream.Send(2)
 		stream.Send(3)
@@ -161,12 +163,17 @@ func TestStream(t *testing.T) {
 		t.Errorf("expected 2, got %d", val)
 	}
 
-	// Test backlog
 	if stream.Backlog() != 1 {
 		t.Errorf("expected backlog 1, got %d", stream.Backlog())
 	}
 
-	// Test close
+	wg.Wait()
+
+	val, ok = stream.Receive()
+	if !ok || val != 3 {
+		t.Errorf("expected 3, got %d (ok=%v)", val, ok)
+	}
+
 	stream.Close()
 	_, ok = stream.Receive()
 	if ok {

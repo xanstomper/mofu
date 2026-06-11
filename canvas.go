@@ -159,7 +159,7 @@ func (c *Canvas) RenderBraille(x, y int, data [][]float64, min, max float64, sca
 				dots[dotIdx] = true
 			}
 			col := scale.At(normalized)
-			c.Set(cx, cy, BrailleChar(dots), col, Color{})
+			c.Set(cx, cy, dots.encode(), col, Color{})
 		}
 	}
 }
