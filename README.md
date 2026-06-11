@@ -239,100 +239,50 @@ Lowest     BACKGROUND     Caching, cleanup
 
 ### Gadgets (65 Reactive UI Systems)
 
-Gadgets are NOT widgets. They are runtime-aware, data-driven reactive systems.
+Gadgets are NOT widgets. They are runtime-aware, data-driven reactive systems with REAL functionality.
 
-**Data & Table Systems (10)**
+**Real Gadgets (with actual logic, sorting, filtering, search):**
+| Gadget | What It Actually Does |
+|--------|----------------------|
+| RealLiveTable | Sort by column, filter by text, select rows, add/remove data |
+| RealMetricBoard | Track metrics, threshold alerts, sparklines, min/max stats |
+| RealCommandPalette | Search commands, filter by category, keyboard navigation |
+| RealLogStream | Filter by level, search text, count lines, clear history |
 
-| Gadget | Description | Use Case |
-|--------|-------------|----------|
-| LiveTable | Virtualized streaming table | Real-time data display |
-| DiffTable | State change highlighting | Change tracking |
-| HeatTable | Density visualization | Metrics display |
-| PagedTable | Lazy loading + pagination | Large datasets |
-| TreeTable | Expandable hierarchical | File browsers |
-| StreamingGrid | Real-time grid | Live dashboards |
-| FilterTable | Reactive filtering | Search interfaces |
-| SortTable | Multi-key sorting | Data tables |
-| PivotTableLite | Grouped aggregation | Analytics |
-| SparseTable | 10k+ row optimization | Log viewers |
+**Production Gadgets (with rendering and state):**
+| Gadget | What It Actually Does |
+|--------|----------------------|
+| MarkdownViewer | Parses markdown, renders headers/bold/lists |
+| DiffViewer | Compares two texts, shows additions/deletions |
+| HexViewer | Displays binary data in hex + ASCII format |
+| JSONExplorer | Pretty-prints JSON with indentation |
+| InspectorPanel | Key-value display with updates |
+| GraphVisualizer | Renders data as ASCII bar charts |
+| Spinner | Animated loading indicator |
+| StatusBadge | Color-coded status display |
+| KeyValue | Formatted key-value pair |
+| Separator | Horizontal line divider |
+| Spacer | Empty space filler |
+| Timer | Elapsed time counter |
+| Counter | Increment/decrement counter |
 
-**Navigation & Layout (10)**
+**Layout Gadgets (with constraint system):**
+| Gadget | What It Actually Does |
+|--------|----------------------|
+| LayoutEngine | Constraint-based layout with min/max/flex |
+| ResponsiveLayoutCore | Breakpoint-based responsive layouts |
+| SmartSidebar | Auto-collapsing navigation panel |
+| AdaptiveSplit | Two-panel split with ratio |
+| WorkspaceGrid | Multi-panel grid layout |
 
-| Gadget | Description | Use Case |
-|--------|-------------|----------|
-| SmartSidebar | Auto-collapsing nav | IDEs, dashboards |
-| AdaptiveSplit | Layout balancing | Split views |
-| WorkspaceGrid | Multi-panel grid | Complex UIs |
-| InspectorPane | Contextual inspector | Debug tools |
-| FocusNavigator | Graph-based navigation | Accessibility |
-| CommandDock | Persistent action bar | Terminal apps |
-| ContextOverlay | Floating UI layer | Tooltips, menus |
-| DockingSystem | Draggable panels | Customizable UIs |
-| ResponsiveLayoutCore | Terminal-aware layouts | Adaptive UIs |
-| LayoutEngine | Constraint-based layout | All apps |
-
-**Input & Interaction (10)**
-
-| Gadget | Description | Use Case |
-|--------|-------------|----------|
-| SmartForm | Schema-driven forms | Data entry |
-| InlineEditor | Editable text blocks | Code editors |
-| KeyChordRouter | Advanced shortcuts | Power user apps |
-| MultiCursorInput | Multiple text inputs | Forms |
-| AutoCompleteEngine | Context-aware suggestions | Search, IDEs |
-| ValidatedInputField | Live validation | Forms |
-| CommandPalette | Fuzzy search + actions | VS Code-like UIs |
-| InputStreamRouter | Event routing | Complex apps |
-| GestureInputLayer | Mouse abstraction | Interactive UIs |
-| FocusTrapManager | Input boundaries | Modal dialogs |
-
-**Real-Time Data (10)**
-
-| Gadget | Description | Use Case |
-|--------|-------------|----------|
-| LogStream | Zero-copy streaming logs | Log viewers |
-| MetricBoard | Real-time metrics | Dashboards |
-| EventFeed | Live event timeline | Monitoring |
-| ProcessTreeView | OS process visualization | System monitors |
-| NetworkMonitor | Live network visualization | Network tools |
-| FileWatcherView | Reactive filesystem | Dev tools |
-| StreamConsole | Continuous CLI output | CLI tools |
-| TraceViewer | Execution tracing | Debugging |
-| PipelineVisualizer | Data flow visualization | Data pipelines |
-| StateInspector | Live state graph debugger | Development |
-
-**Visual & ASCII (10)**
-
-| Gadget | Description | Use Case |
-|--------|-------------|----------|
-| ASCIIScene | Full scene graph | Game-like UIs |
-| ParticleField | Terminal particle system | Visual effects |
-| SplashComposer | Animated boot sequences | App startup |
-| WaveVisualizer | Waveform renderer | Audio/data viz |
-| DensityMapRenderer | Heat/flow visualization | Data visualization |
-| ProceduralArtEngine | Generative ASCII | Artistic UIs |
-| MotionBanner | Animated headers | Branding |
-| GlyphMorpher | Character morph animations | Transitions |
-| TerminalCanvas | Pixel-like drawing | Custom rendering |
-| SDFRendererLite | Signed-distance-field ASCII | Advanced visuals |
-
-**Production Gadgets (15)**
-
-| Gadget | Description | Use Case |
-|--------|-------------|----------|
-| MarkdownViewer | Markdown rendering | Documentation |
-| DiffViewer | Text diff display | Code review |
-| HexViewer | Binary hex display | Binary inspection |
-| JSONExplorer | JSON tree viewer | Data inspection |
-| InspectorPanel | Key-value inspector | Debugging |
-| GraphVisualizer | ASCII graph rendering | Metrics |
-| Spinner | Loading spinner | Loading states |
-| StatusBadge | Status indicators | Status display |
-| KeyValue | Key-value display | Data display |
-| Separator | Horizontal divider | Visual separation |
-| Spacer | Empty space | Layout control |
-| Timer | Elapsed time display | Performance |
-| Counter | Counter display | Metrics |
+**Data Gadgets (with streaming):**
+| Gadget | What It Actually Does |
+|--------|----------------------|
+| LogStream | Buffer logs, filter by level/search |
+| MetricBoard | Track and display real-time metrics |
+| EventFeed | Timeline of events with timestamps |
+| ProcessTreeView | Hierarchical process display |
+| NetworkMonitor | Request/response visualization |
 
 ### Cuddles (Semantic Styling)
 
