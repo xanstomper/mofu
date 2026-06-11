@@ -255,3 +255,182 @@ func (m *Manager) Names() []string {
 	}
 	return names
 }
+
+// ---------------------------------------------------------------------------
+// Style Composition
+// ---------------------------------------------------------------------------
+
+// StyleBuilder provides a fluent API for building styles.
+type StyleBuilder struct {
+	style mofu.Style
+}
+
+// NewStyle creates a new style builder.
+func NewStyle() *StyleBuilder {
+	return &StyleBuilder{style: mofu.DefaultStyle()}
+}
+
+// Fg sets the foreground color.
+func (b *StyleBuilder) Fg(c mofu.Color) *StyleBuilder {
+	b.style.Foreground = c
+	return b
+}
+
+// Bg sets the background color.
+func (b *StyleBuilder) Bg(c mofu.Color) *StyleBuilder {
+	b.style.Background = c
+	return b
+}
+
+// Bold sets bold attribute.
+func (b *StyleBuilder) Bold() *StyleBuilder {
+	b.style.Attrs |= mofu.AttrBold
+	return b
+}
+
+// Italic sets italic attribute.
+func (b *StyleBuilder) Italic() *StyleBuilder {
+	b.style.Attrs |= mofu.AttrItalic
+	return b
+}
+
+// Underline sets underline attribute.
+func (b *StyleBuilder) Underline() *StyleBuilder {
+	b.style.Attrs |= mofu.AttrUnderline
+	return b
+}
+
+// Dim sets dim attribute.
+func (b *StyleBuilder) Dim() *StyleBuilder {
+	b.style.Attrs |= mofu.AttrDim
+	return b
+}
+
+// Reverse sets reverse attribute.
+func (b *StyleBuilder) Reverse() *StyleBuilder {
+	b.style.Attrs |= mofu.AttrReverse
+	return b
+}
+
+// Strikethrough sets strikethrough attribute.
+func (b *StyleBuilder) Strikethrough() *StyleBuilder {
+	b.style.Attrs |= mofu.AttrStrikethrough
+	return b
+}
+
+// Width sets the width.
+func (b *StyleBuilder) Width(w int) *StyleBuilder {
+	b.style.Width = w
+	return b
+}
+
+// Height sets the height.
+func (b *StyleBuilder) Height(h int) *StyleBuilder {
+	b.style.Height = h
+	return b
+}
+
+// Align sets the alignment.
+func (b *StyleBuilder) Align(a mofu.Align) *StyleBuilder {
+	b.style.Align = a
+	return b
+}
+
+// Border sets the border style.
+func (b *StyleBuilder) Border(bs mofu.BorderStyle) *StyleBuilder {
+	b.style.Border = bs
+	return b
+}
+
+// Padding sets padding on all sides.
+func (b *StyleBuilder) Padding(v int) *StyleBuilder {
+	b.style.Padding = mofu.Spacing{Top: v, Right: v, Bottom: v, Left: v}
+	return b
+}
+
+// Margin sets margin on all sides.
+func (b *StyleBuilder) Margin(v int) *StyleBuilder {
+	b.style.Margin = mofu.Spacing{Top: v, Right: v, Bottom: v, Left: v}
+	return b
+}
+
+// Gap sets the gap between children.
+func (b *StyleBuilder) Gap(g int) *StyleBuilder {
+	b.style.Gap = g
+	return b
+}
+
+// Grow sets the flex grow factor.
+func (b *StyleBuilder) Grow(g float64) *StyleBuilder {
+	b.style.Grow = g
+	return b
+}
+
+// Build returns the final style.
+func (b *StyleBuilder) Build() mofu.Style {
+	return b.style
+}
+
+// ---------------------------------------------------------------------------
+// Semantic Style Shortcuts
+// ---------------------------------------------------------------------------
+
+// PrimaryStyle returns a style with primary color.
+func PrimaryStyle(theme *Theme) mofu.Style {
+	return theme.Style(Primary)
+}
+
+// SecondaryStyle returns a style with secondary color.
+func SecondaryStyle(theme *Theme) mofu.Style {
+	return theme.Style(Secondary)
+}
+
+// SuccessStyle returns a style with success color.
+func SuccessStyle(theme *Theme) mofu.Style {
+	return theme.Style(Success)
+}
+
+// WarningStyle returns a style with warning color.
+func WarningStyle(theme *Theme) mofu.Style {
+	return theme.Style(Warning)
+}
+
+// ErrorStyle returns a style with error color.
+func ErrorStyle(theme *Theme) mofu.Style {
+	return theme.Style(Error)
+}
+
+// InfoStyle returns a style with info color.
+func InfoStyle(theme *Theme) mofu.Style {
+	return theme.Style(Info)
+}
+
+// MutedStyle returns a style with muted color.
+func MutedStyle(theme *Theme) mofu.Style {
+	return theme.Style(Muted)
+}
+
+// TextStyle returns a style with text color.
+func TextStyle(theme *Theme) mofu.Style {
+	return theme.Style(Text)
+}
+
+// TextDimStyle returns a style with dim text color.
+func TextDimStyle(theme *Theme) mofu.Style {
+	return theme.Style(TextDim)
+}
+
+// BgStyle returns a style with background color.
+func BgStyle(theme *Theme) mofu.Style {
+	return theme.StyleBg(Bg)
+}
+
+// SurfaceStyle returns a style with surface color.
+func SurfaceStyle(theme *Theme) mofu.Style {
+	return theme.StyleBg(Surface)
+}
+
+// BorderStyleColor returns a style with border color.
+func BorderStyleColor(theme *Theme) mofu.Style {
+	return theme.Style(Border)
+}

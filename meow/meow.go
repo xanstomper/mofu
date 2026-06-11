@@ -366,3 +366,119 @@ func validateMaxLength(max int) func(any) error {
 		return nil
 	}
 }
+
+// ValidateMinValue validates that a number is at least min.
+func ValidateMinValue(min float64) func(any) error {
+	return func(v any) error {
+		switch n := v.(type) {
+		case int:
+			if float64(n) < min {
+				return fmt.Errorf("must be at least %.0f", min)
+			}
+		case float64:
+			if n < min {
+				return fmt.Errorf("must be at least %.2f", min)
+			}
+		}
+		return nil
+	}
+}
+
+// ValidateMaxValue validates that a number is at most max.
+func ValidateMaxValue(max float64) func(any) error {
+	return func(v any) error {
+		switch n := v.(type) {
+		case int:
+			if float64(n) > max {
+				return fmt.Errorf("must be at most %.0f", max)
+			}
+		case float64:
+			if n > max {
+				return fmt.Errorf("must be at most %.2f", max)
+			}
+		}
+		return nil
+	}
+}
+
+// ValidateRange validates that a number is within [min, max].
+func ValidateRange(min, max float64) func(any) error {
+	return func(v any) error {
+		switch n := v.(type) {
+		case int:
+			if float64(n) < min || float64(n) > max {
+				return fmt.Errorf("must be between %.0f and %.0f", min, max)
+			}
+		case float64:
+			if n < min || n > max {
+				return fmt.Errorf("must be between %.2f and %.2f", min, max)
+			}
+		}
+		return nil
+	}
+}
+
+// ValidateURL validates URL format.
+func ValidateURL(v any) error {
+	s, ok := v.(string)
+	if !ok || s == "" {
+		return nil
+	}
+	if !strings.HasPrefix(s, "http://") && !strings.HasPrefix(s, "https://") {
+		return fmt.Errorf("must be a valid URL")
+	}
+	return nil
+}
+
+// ValidatePhone validates phone number format.
+func ValidatePhone(v any) error {
+	s, ok := v.(string)
+	if !ok || s == "" {
+		return nil
+	}
+	// Simple phone validation: digits, spaces, dashes, plus
+	for _, c := range s {
+		if !(c >= '0' && c <= '9') && c != ' ' && c != '-' && c != '+' && c != '(' && c != ')' {
+			return fmt.Errorf("must be a valid phone number")
+		}
+	}
+	return nil
+}
+
+// ValidateMatch validates that two fields match.
+func ValidateMatch(field1, field2 string, values map[string]any) func(any) error {
+	return func(v any) error {
+		v1, ok1 := values[field1]
+		v2, ok2 := values[field2]
+		if ok1 && ok2 && fmt.Sprintf("%v", v1) != fmt.Sprintf("%v", v2) {
+			return fmt.Errorf("%s must match %s", field1, field2)
+		}
+		return nil
+	}
+}
+
+// ValidateOneOf validates that value is one of the allowed values.
+func ValidateOneOf(allowed ...string) func(any) error {
+	return func(v any) error {
+		s, ok := v.(string)
+		if !ok {
+			return nil
+		}
+		for _, a := range allowed {
+			if s == a {
+				return nil
+			}
+		}
+		return fmt.Errorf("must be one of: %s", strings.Join(allowed, ", "))
+	}
+}
+
+// ValidateCustom creates a custom validator with a message.
+func ValidateCustom(fn func(any) bool, message string) func(any) error {
+	return func(v any) error {
+		if !fn(v) {
+			return fmt.Errorf("%s", message)
+		}
+		return nil
+	}
+}

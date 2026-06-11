@@ -290,6 +290,8 @@ BenchmarkCollectDirtyNoDirty-4 21M       90ns/op    0 allocs/op
 | `logviewer` | Log viewer with filtering and scrolling | `go run examples/logviewer/main.go` |
 | `wizard` | Multi-step setup wizard | `go run examples/wizard/main.go` |
 | `monitor` | Real-time system monitor with live bars | `go run examples/monitor/main.go` |
+| `gitui` | Git interface (status, log, diff) | `go run examples/gitui/main.go` |
+| `dockerui` | Docker interface (containers, images) | `go run examples/dockerui/main.go` |
 
 ---
 
