@@ -117,8 +117,9 @@ func TestHistory(t *testing.T) {
 	if !h.CanUndo() {
 		t.Error("should be able to undo")
 	}
-	if !h.CanRedo() {
-		t.Error("should be able to redo")
+	// After redo, redo stack is empty
+	if h.CanRedo() {
+		t.Error("should not be able to redo after redo")
 	}
 }
 
