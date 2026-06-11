@@ -308,6 +308,11 @@ func (g *Graph) Propagate(id NodeID) {
 	g.propagate(id, g.visited)
 }
 
+// recomputer is implemented by nodes that need to recompute when dependencies change.
+type recomputer interface {
+	Recompute()
+}
+
 func (g *Graph) propagate(id NodeID, visited map[NodeID]bool) {
 	if visited[id] {
 		return
@@ -319,8 +324,8 @@ func (g *Graph) propagate(id NodeID, visited map[NodeID]bool) {
 		return
 	}
 
-	if c, ok := node.(*Computed); ok {
-		c.Recompute()
+	if r, ok := node.(recomputer); ok {
+		r.Recompute()
 	}
 
 	node.MarkClean()

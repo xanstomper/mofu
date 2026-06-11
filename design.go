@@ -147,8 +147,8 @@ type Grid struct {
 	Gap     int
 }
 
-// NewGrid creates a grid with the given number of columns.
-func NewGrid(columns int, children ...Node) *Grid {
+// NewSimpleGrid creates a simple grid with the given number of columns.
+func NewSimpleGrid(columns int, children ...Node) *Grid {
 	g := &Grid{Columns: columns, Gap: 1}
 	g.children = children
 	return g

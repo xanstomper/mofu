@@ -17,6 +17,7 @@ import (
 	"bytes"
 	"sort"
 	"sync"
+	"time"
 
 	"github.com/mattn/go-runewidth"
 )
@@ -133,11 +134,33 @@ type DiffRenderer struct {
 	// Preallocated dirty rect tracking
 	dirtyRects  []Rect
 	dirtyActive bool
+
+	// Frame statistics
+	stats      RenderStats
+	frameCount int64
 }
 
 // Rect represents a dirty region in the terminal grid.
 type Rect struct {
 	X, Y, Width, Height int
+}
+
+// RenderStats tracks per-frame rendering performance metrics.
+type RenderStats struct {
+	Frame      int64
+	DirtyCells int
+	TotalCells int
+	FlushTime  time.Duration
+	Rects      int
+	OutputSize int
+}
+
+// DirtyRatio returns the fraction of cells that were dirty (0.0 to 1.0).
+func (s *RenderStats) DirtyRatio() float64 {
+	if s.TotalCells == 0 {
+		return 0
+	}
+	return float64(s.DirtyCells) / float64(s.TotalCells)
 }
 
 // NewDiffRenderer creates a DiffRenderer with preallocated buffers for the
@@ -178,6 +201,26 @@ func (dr *DiffRenderer) MarkRect(x, y, w, h int) {
 	dr.dirtyRects = append(dr.dirtyRects, Rect{X: x, Y: y, Width: w, Height: h})
 }
 
+// MarkWidgetDirty is a convenience for marking a widget's bounding box dirty.
+func (dr *DiffRenderer) MarkWidgetDirty(x, y, w, h int) {
+	dr.MarkRect(x, y, w, h)
+}
+
+// ClearRegion resets a rectangular region of the front buffer to empty.
+func (dr *DiffRenderer) ClearRegion(x, y, w, h int) {
+	for ry := y; ry < y+h && ry < dr.height; ry++ {
+		for rx := x; rx < x+w && rx < dr.width; rx++ {
+			dr.front.Set(rx, ry, ' ', 0, 0, 0)
+		}
+	}
+	dr.MarkRect(x, y, w, h)
+}
+
+// Stats returns the render statistics from the last Flush call.
+func (dr *DiffRenderer) Stats() RenderStats {
+	return dr.stats
+}
+
 // ---------------------------------------------------------------------------
 // Synchronized Output Protocol (CSI 2026)
 // ---------------------------------------------------------------------------
@@ -207,7 +250,16 @@ const (
 //
 // Returns empty string if no cells changed.
 func (dr *DiffRenderer) Flush() string {
+	start := time.Now()
+
 	if !dr.dirtyActive {
+		dr.stats = RenderStats{
+			Frame:      dr.frameCount,
+			DirtyCells: 0,
+			TotalCells: dr.width * dr.height,
+			FlushTime:  time.Since(start),
+		}
+		dr.frameCount++
 		return ""
 	}
 
@@ -230,9 +282,34 @@ func (dr *DiffRenderer) Flush() string {
 	dr.dirtyRects = dr.dirtyRects[:0]
 	dr.dirtyActive = false
 
-	if dr.buf.Len() <= len(syncStart)+len(syncEnd) {
+	outputSize := dr.buf.Len()
+	if outputSize <= len(syncStart)+len(syncEnd) {
+		dr.stats = RenderStats{
+			Frame:      dr.frameCount,
+			DirtyCells: 0,
+			TotalCells: dr.width * dr.height,
+			FlushTime:  time.Since(start),
+		}
+		dr.frameCount++
 		return ""
 	}
+
+	// Count dirty cells from rects
+	dirtyCells := 0
+	for _, rect := range rects {
+		dirtyCells += rect.Width * rect.Height
+	}
+
+	dr.stats = RenderStats{
+		Frame:      dr.frameCount,
+		DirtyCells: dirtyCells,
+		TotalCells: dr.width * dr.height,
+		FlushTime:  time.Since(start),
+		Rects:      len(rects),
+		OutputSize: outputSize,
+	}
+	dr.frameCount++
+
 	return dr.buf.String()
 }
 
