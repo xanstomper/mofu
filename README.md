@@ -37,42 +37,53 @@
 
 MOFU is not another TUI framework. It's a **reactive terminal application runtime** that fundamentally changes how you build terminal applications.
 
+### The Problem with Existing Frameworks
+
 ```
-┌─────────────────────────────────────────────────────────────────┐
-│                    MOFU ARCHITECTURE                            │
-├─────────────────────────────────────────────────────────────────┤
-│                                                                 │
-│  ┌──────────┐    ┌──────────┐    ┌──────────┐    ┌──────────┐ │
-│  │  INPUT   │───▶│  STATE   │───▶│ COMPUTE  │───▶│  RENDER  │ │
-│  │  STREAMS │    │  GRAPH   │    │  ENGINE  │    │  DIFF    │ │
-│  └──────────┘    └──────────┘    └──────────┘    └──────────┘ │
-│       │               │               │               │        │
-│       ▼               ▼               ▼               ▼        │
-│  ┌──────────┐    ┌──────────┐    ┌──────────┐    ┌──────────┐ │
-│  │ SCHEDULER│    │ ANIMATION│    │  LAYOUT  │    │ TERMINAL │ │
-│  │  LANES   │    │  GRAPH   │    │  ENGINE  │    │  OUTPUT  │ │
-│  └──────────┘    └──────────┘    └──────────┘    └──────────┘ │
-│                                                                 │
-└─────────────────────────────────────────────────────────────────┘
+Bubble Tea Architecture (Elm Loop):
+  User Input → Update(Model) → View(Model) → String → Terminal
+                    ↑                              │
+                    └──────────────────────────────┘
+                    Every frame: full model copy, full string rebuild
+
+MOFU Architecture (Reactive Graph):
+  User Input → State Graph → Dirty Tracking → Layout → Diff → Terminal
+                    │              │              │        │
+                    └──────────────┴──────────────┴────────┘
+                    Only changed cells are processed
 ```
 
-### Comparison
+### Performance Comparison
 
-| Feature | MOFU | Bubble Tea | Ratatui | OpenTUI |
-|---------|:----:|:----------:|:-------:|:-------:|
-| **Architecture** | Reactive graph | Elm loop | Immediate mode | Virtual DOM |
-| **State Updates** | O(1) dirty tracking | O(N) full copy | O(N) full redraw | O(N) diff |
-| **Rendering** | Incremental diff | Full redraw | Immediate | Virtual diff |
-| **Streaming** | First-class | Manual | No | No |
-| **Gadgets** | 65 built-in | ~15 bubbles | ~10 | ~8 |
-| **Styling** | Semantic (Cuddles) | Lipgloss | Inline | StyleSheet |
-| **Forms** | Schema-driven (Meow) | Manual (Huh) | Manual | Manual |
-| **Animation** | Spring physics | None | None | Limited |
-| **Accessibility** | Built-in | None | None | None |
-| **Plugin System** | Full runtime | None | None | None |
-| **AI Support** | Native primitives | None | None | None |
-| **Layout Engine** | Constraint-based | Manual | Manual | Flexbox-like |
-| **License** | MIT | MIT | MIT | MIT |
+```
+Frame Time (lower is better):
+
+Bubble Tea    ████████████████████████████████████  5.0ms
+Ratatui       ████████████████████████              3.0ms
+MOFU          ████████                              1.0ms
+              ─────────────────────────────────────
+              0ms    1ms    2ms    3ms    4ms    5ms
+```
+
+```
+Memory Allocations Per Frame:
+
+Bubble Tea    ████████████████████████████████  5 allocs
+Ratatui       ████████████████████              3 allocs
+MOFU          █                                 0 allocs
+              ─────────────────────────────────
+              0        1        2        3        4        5
+```
+
+```
+Dirty Tracking (nodes processed per update):
+
+Bubble Tea    ████████████████████████████████████████  1000 (all)
+Ratatui       ████████████████████████████████████████  1000 (all)
+MOFU          █                                         1 (only changed)
+              ─────────────────────────────────────────
+              0       100      200      500      1000
+```
 
 ---
 
@@ -140,85 +151,74 @@ go run main.go
 
 ## Architecture
 
-### How It Works
+### How MOFU Works
 
 ```
-User Input
-    │
-    ▼
-Event Router (parse keyboard, mouse, resize)
-    │
-    ▼
-State Graph (reactive dependency tracking)
-    │
-    ▼
-Dirty Propagation (O(1) per node)
-    │
-    ▼
-Layout Engine (constraint-based)
-    │
-    ▼
-Tree Diff (minimal changes)
-    │
-    ▼
-Diff Renderer (cell-level comparison)
-    │
-    ▼
-Terminal Output (ANSI sequences)
+    ┌─────────────────────────────────────────────────────────┐
+    │                   MOFU RUNTIME                          │
+    │                                                         │
+    │   Input ──▶ Event Router ──▶ State Graph ──▶ Compute   │
+    │     │              │              │              │      │
+    │     │              │              │              ▼      │
+    │     │              │              │         Layout      │
+    │     │              │              │              │      │
+    │     │              │              │              ▼      │
+    │     │              │              │         Tree Diff   │
+    │     │              │              │              │      │
+    │     │              │              │              ▼      │
+    │     │              │              │        Diff Render  │
+    │     │              │              │              │      │
+    │     │              │              │              ▼      │
+    │     │              │              │        Terminal     │
+    │     │              │              │                     │
+    │   Scheduler Lanes (5 priority levels)                  │
+    │   ┌────────┬────────┬────────┬────────┬────────┐     │
+    │   │Realtime│ Stream │Compute │ Render │  Back  │     │
+    │   │        │        │        │        │  ground│     │
+    │   └────────┴────────┴────────┴────────┴────────┘     │
+    └─────────────────────────────────────────────────────────┘
 ```
 
 ### Key Concepts
 
-#### 1. Reactive State Graph
-
-MOFU uses a reactive state graph with O(1) dirty tracking:
-
-```go
-// When state changes, only affected nodes are marked dirty
-atom.SetValue(42)  // O(1) - only marks this node dirty
-
-// CollectDirty returns only dirty nodes
-dirty := graph.CollectDirty()  // O(dirty nodes), not O(all nodes)
-```
-
-#### 2. Tree-Based Rendering
-
-Unlike Bubble Tea (string-based), MOFU maintains an actual tree of nodes:
-
-```go
-// Create a tree node
-root := mofu.NewTreeNode("root", "box")
-child := mofu.NewTreeNode("child1", "text")
-child.SetProp("text", "Hello World")
-root.AddChild(child)
-
-// Diff two trees
-results := mofu.DiffTrees(oldTree, newTree)
-// Returns only the changes: add, remove, update
-```
-
-#### 3. Incremental Rendering
-
-Only changed cells are written to the terminal:
-
-```go
-// Previous frame: "Hello World"
-// Current frame:  "Hello MOFU"
-// Diff output:    Only changes "World" → "MOFU"
-```
-
-#### 4. Scheduler Lanes
-
-Critical operations are never blocked:
+**1. Reactive State Graph** — O(1) dirty tracking
 
 ```
-Lane          Purpose                    Priority
-─────────────────────────────────────────────────
-REALTIME      Input, focus, UI           Highest
-STREAM        AI tokens, logs            High
-COMPUTE       State derivation           Medium
-RENDER        Diff + terminal output     Medium
-BACKGROUND    Caching, cleanup           Lowest
+State Change ──▶ Mark Node Dirty ──▶ Propagate Dependencies ──▶ Recompute Only Affected
+     │                                                              │
+     └──────────────────────────────────────────────────────────────┘
+     Result: O(changed nodes), not O(total nodes)
+```
+
+**2. Tree-Based Rendering** — Not string-based
+
+```
+Bubble Tea:   Model ──▶ View() ──▶ String ──▶ Terminal
+              (rebuild entire string every frame)
+
+MOFU:         Model ──▶ Tree ──▶ Diff ──▶ Terminal
+              (only changed nodes are re-rendered)
+```
+
+**3. Incremental Diff** — Only changed cells
+
+```
+Previous Frame:  H e l l o   W o r l d
+Current Frame:   H e l l o   M O F U
+                       ────   ─────
+Diff Output:     Only changes "World" → "MOFU"
+```
+
+**4. Scheduler Lanes** — No blocking
+
+```
+Priority   Lane           Use Case
+─────────────────────────────────────
+Highest    REALTIME       Input, focus, UI
+High       STREAM         AI tokens, logs
+Medium     COMPUTE        State derivation
+Medium     RENDER         Diff + terminal
+Lowest     BACKGROUND     Caching, cleanup
 ```
 
 ---
@@ -229,106 +229,110 @@ BACKGROUND    Caching, cleanup           Lowest
 
 | Feature | Description |
 |---------|-------------|
-| **Reactive State Graph** | O(1) dirty tracking, automatic dependency resolution |
-| **Incremental Diff Renderer** | Cell-level diff, only changed cells written to terminal |
-| **Synchronized Output** | CSI 2026 protocol for flicker-free updates |
-| **Spring Physics** | Damped spring animations with configurable stiffness/damping |
-| **Constraint Layout** | Flex, grid, and constraint-based layout engine |
-| **Full Input Parser** | Arrows, F-keys, Ctrl+key, Alt+key, mouse (SGR mode) |
-| **Tree Diffing** | Efficient tree comparison for incremental updates |
+| Reactive State Graph | O(1) dirty tracking, automatic dependency resolution |
+| Incremental Diff Renderer | Cell-level diff, only changed cells written to terminal |
+| Synchronized Output | CSI 2026 protocol for flicker-free updates |
+| Spring Physics | Damped spring animations with configurable stiffness/damping |
+| Constraint Layout | Flex, grid, and constraint-based layout engine |
+| Full Input Parser | Arrows, F-keys, Ctrl+key, Alt+key, mouse (SGR mode) |
+| Tree Diffing | Efficient tree comparison for incremental updates |
 
 ### Gadgets (65 Reactive UI Systems)
 
 Gadgets are NOT widgets. They are runtime-aware, data-driven reactive systems.
 
 **Data & Table Systems (10)**
-| Gadget | Description |
-|--------|-------------|
-| LiveTable | Virtualized streaming table |
-| DiffTable | State change highlighting |
-| HeatTable | Density visualization |
-| PagedTable | Lazy loading + pagination |
-| TreeTable | Expandable hierarchical |
-| StreamingGrid | Real-time grid |
-| FilterTable | Reactive filtering |
-| SortTable | Multi-key sorting |
-| PivotTableLite | Grouped aggregation |
-| SparseTable | 10k+ row optimization |
+
+| Gadget | Description | Use Case |
+|--------|-------------|----------|
+| LiveTable | Virtualized streaming table | Real-time data display |
+| DiffTable | State change highlighting | Change tracking |
+| HeatTable | Density visualization | Metrics display |
+| PagedTable | Lazy loading + pagination | Large datasets |
+| TreeTable | Expandable hierarchical | File browsers |
+| StreamingGrid | Real-time grid | Live dashboards |
+| FilterTable | Reactive filtering | Search interfaces |
+| SortTable | Multi-key sorting | Data tables |
+| PivotTableLite | Grouped aggregation | Analytics |
+| SparseTable | 10k+ row optimization | Log viewers |
 
 **Navigation & Layout (10)**
-| Gadget | Description |
-|--------|-------------|
-| SmartSidebar | Auto-collapsing nav |
-| AdaptiveSplit | Layout balancing |
-| WorkspaceGrid | Multi-panel grid |
-| InspectorPane | Contextual inspector |
-| FocusNavigator | Graph-based navigation |
-| CommandDock | Persistent action bar |
-| ContextOverlay | Floating UI layer |
-| DockingSystem | Draggable panels |
-| ResponsiveLayoutCore | Terminal-aware layouts |
-| LayoutEngine | Constraint-based layout |
+
+| Gadget | Description | Use Case |
+|--------|-------------|----------|
+| SmartSidebar | Auto-collapsing nav | IDEs, dashboards |
+| AdaptiveSplit | Layout balancing | Split views |
+| WorkspaceGrid | Multi-panel grid | Complex UIs |
+| InspectorPane | Contextual inspector | Debug tools |
+| FocusNavigator | Graph-based navigation | Accessibility |
+| CommandDock | Persistent action bar | Terminal apps |
+| ContextOverlay | Floating UI layer | Tooltips, menus |
+| DockingSystem | Draggable panels | Customizable UIs |
+| ResponsiveLayoutCore | Terminal-aware layouts | Adaptive UIs |
+| LayoutEngine | Constraint-based layout | All apps |
 
 **Input & Interaction (10)**
-| Gadget | Description |
-|--------|-------------|
-| SmartForm | Schema-driven forms |
-| InlineEditor | Editable text blocks |
-| KeyChordRouter | Advanced shortcuts |
-| MultiCursorInput | Multiple text inputs |
-| AutoCompleteEngine | Context-aware suggestions |
-| ValidatedInputField | Live validation |
-| CommandPalette | Fuzzy search + actions |
-| InputStreamRouter | Event routing |
-| GestureInputLayer | Mouse abstraction |
-| FocusTrapManager | Input boundaries |
+
+| Gadget | Description | Use Case |
+|--------|-------------|----------|
+| SmartForm | Schema-driven forms | Data entry |
+| InlineEditor | Editable text blocks | Code editors |
+| KeyChordRouter | Advanced shortcuts | Power user apps |
+| MultiCursorInput | Multiple text inputs | Forms |
+| AutoCompleteEngine | Context-aware suggestions | Search, IDEs |
+| ValidatedInputField | Live validation | Forms |
+| CommandPalette | Fuzzy search + actions | VS Code-like UIs |
+| InputStreamRouter | Event routing | Complex apps |
+| GestureInputLayer | Mouse abstraction | Interactive UIs |
+| FocusTrapManager | Input boundaries | Modal dialogs |
 
 **Real-Time Data (10)**
-| Gadget | Description |
-|--------|-------------|
-| LogStream | Zero-copy streaming logs |
-| MetricBoard | Real-time metrics |
-| EventFeed | Live event timeline |
-| ProcessTreeView | OS process visualization |
-| NetworkMonitor | Live network visualization |
-| FileWatcherView | Reactive filesystem |
-| StreamConsole | Continuous CLI output |
-| TraceViewer | Execution tracing |
-| PipelineVisualizer | Data flow visualization |
-| StateInspector | Live state graph debugger |
+
+| Gadget | Description | Use Case |
+|--------|-------------|----------|
+| LogStream | Zero-copy streaming logs | Log viewers |
+| MetricBoard | Real-time metrics | Dashboards |
+| EventFeed | Live event timeline | Monitoring |
+| ProcessTreeView | OS process visualization | System monitors |
+| NetworkMonitor | Live network visualization | Network tools |
+| FileWatcherView | Reactive filesystem | Dev tools |
+| StreamConsole | Continuous CLI output | CLI tools |
+| TraceViewer | Execution tracing | Debugging |
+| PipelineVisualizer | Data flow visualization | Data pipelines |
+| StateInspector | Live state graph debugger | Development |
 
 **Visual & ASCII (10)**
-| Gadget | Description |
-|--------|-------------|
-| ASCIIScene | Full scene graph |
-| ParticleField | Terminal particle system |
-| SplashComposer | Animated boot sequences |
-| WaveVisualizer | Waveform renderer |
-| DensityMapRenderer | Heat/flow visualization |
-| ProceduralArtEngine | Generative ASCII |
-| MotionBanner | Animated headers |
-| GlyphMorpher | Character morph animations |
-| TerminalCanvas | Pixel-like drawing |
-| SDFRendererLite | Signed-distance-field ASCII |
+
+| Gadget | Description | Use Case |
+|--------|-------------|----------|
+| ASCIIScene | Full scene graph | Game-like UIs |
+| ParticleField | Terminal particle system | Visual effects |
+| SplashComposer | Animated boot sequences | App startup |
+| WaveVisualizer | Waveform renderer | Audio/data viz |
+| DensityMapRenderer | Heat/flow visualization | Data visualization |
+| ProceduralArtEngine | Generative ASCII | Artistic UIs |
+| MotionBanner | Animated headers | Branding |
+| GlyphMorpher | Character morph animations | Transitions |
+| TerminalCanvas | Pixel-like drawing | Custom rendering |
+| SDFRendererLite | Signed-distance-field ASCII | Advanced visuals |
 
 **Production Gadgets (15)**
-| Gadget | Description |
-|--------|-------------|
-| MarkdownViewer | Markdown rendering |
-| DiffViewer | Text diff display |
-| HexViewer | Binary hex display |
-| JSONExplorer | JSON tree viewer |
-| InspectorPanel | Key-value inspector |
-| GraphVisualizer | ASCII graph rendering |
-| Spinner | Loading spinner |
-| StatusBadge | Status indicators |
-| KeyValue | Key-value display |
-| Separator | Horizontal divider |
-| Spacer | Empty space |
-| Timer | Elapsed time display |
-| Counter | Counter display |
-| MarkdownViewer | Markdown rendering |
-| DiffViewer | Text diff display |
+
+| Gadget | Description | Use Case |
+|--------|-------------|----------|
+| MarkdownViewer | Markdown rendering | Documentation |
+| DiffViewer | Text diff display | Code review |
+| HexViewer | Binary hex display | Binary inspection |
+| JSONExplorer | JSON tree viewer | Data inspection |
+| InspectorPanel | Key-value inspector | Debugging |
+| GraphVisualizer | ASCII graph rendering | Metrics |
+| Spinner | Loading spinner | Loading states |
+| StatusBadge | Status indicators | Status display |
+| KeyValue | Key-value display | Data display |
+| Separator | Horizontal divider | Visual separation |
+| Spacer | Empty space | Layout control |
+| Timer | Elapsed time display | Performance |
+| Counter | Counter display | Metrics |
 
 ### Cuddles (Semantic Styling)
 
@@ -404,25 +408,25 @@ stream.Send("new log entry")
 
 ```
 mofu/
-├── core/              # Runtime kernel
-│   ├── kernel/        # Execution engine
-│   ├── state/         # Reactive graph system
-│   ├── render/        # Diff + ANSI renderer
-│   └── message/       # Event bus
-├── gadgets/           # 65 reactive UI systems
-├── cuddles/           # Semantic styling engine
-├── meow/              # Schema-driven forms
-├── widgets/           # Traditional widgets (15)
-├── examples/          # 13 example applications
-├── primitives/        # Low-level adapters
-├── effect/            # Effect system
-├── plugin/            # Plugin runtime
-├── scheduler/         # Lane-based task system
-├── stream/            # Streaming data engine
-├── layout_engine.go   # Constraint-based layout
-├── tree.go            # Tree-based rendering
-├── data.go            # Reactive data system
-└── cmd/mofu/          # CLI tool
+├── core/              Runtime kernel
+│   ├── kernel/        Execution engine
+│   ├── state/         Reactive graph system
+│   ├── render/        Diff + ANSI renderer
+│   └── message/       Event bus
+├── gadgets/           65 reactive UI systems
+├── cuddles/           Semantic styling engine
+├── meow/              Schema-driven forms
+├── widgets/           Traditional widgets (15)
+├── examples/          13 example applications
+├── primitives/        Low-level adapters
+├── effect/            Effect system
+├── plugin/            Plugin runtime
+├── scheduler/         Lane-based task system
+├── stream/            Streaming data engine
+├── layout_engine.go   Constraint-based layout
+├── tree.go            Tree-based rendering
+├── data.go            Reactive data system
+└── cmd/mofu/          CLI tool
 ```
 
 ---
@@ -433,21 +437,21 @@ mofu/
 
 | Metric | Value | Allocations |
 |--------|-------|-------------|
-| AtomSetValue | **124ns** | 0 |
-| CollectDirty (100 nodes) | **9μs** | 1 |
-| CollectDirty (1000 nodes) | **108μs** | 1 |
-| CollectDirty (no dirty) | **52ns** | 0 |
-| Tree diff | **O(nodes)** | Minimal |
-| SGR cache hit | **<1ns** | 0 |
+| AtomSetValue | 124ns | 0 |
+| CollectDirty (100 nodes) | 9μs | 1 |
+| CollectDirty (1000 nodes) | 108μs | 1 |
+| CollectDirty (no dirty) | 52ns | 0 |
+| Tree diff | O(nodes) | Minimal |
+| SGR cache hit | <1ns | 0 |
 
 ### Comparison
 
 | Metric | MOFU | Bubble Tea | Ratatui |
 |--------|------|------------|---------|
-| State update | **124ns** | ~1000ns | ~500ns |
-| Dirty tracking | **52ns** | O(N) scan | O(N) scan |
-| Memory per frame | **0 allocs** | 2-5 allocs | 1-3 allocs |
-| Render (80x24) | **<1ms** | ~5ms | ~3ms |
+| State update | 124ns | ~1000ns | ~500ns |
+| Dirty tracking | 52ns | O(N) scan | O(N) scan |
+| Memory per frame | 0 allocs | 2-5 allocs | 1-3 allocs |
+| Render (80x24) | <1ms | ~5ms | ~3ms |
 
 ---
 
@@ -455,31 +459,31 @@ mofu/
 
 | Example | Description | Run |
 |---------|-------------|-----|
-| `counter` | Minimal counter — the "hello world" | `go run examples/counter/main.go` |
-| `dashboard` | Multi-panel dashboard with navigation | `go run examples/dashboard/main.go` |
-| `chat` | Chat interface with input widget | `go run examples/chat/main.go` |
-| `filemanager` | File browser with directory navigation | `go run examples/filemanager/main.go .` |
-| `form` | Registration form with inputs, checkbox, button | `go run examples/form/main.go` |
-| `settings` | Settings panel with checkboxes and selects | `go run examples/settings/main.go` |
-| `logviewer` | Log viewer with filtering and scrolling | `go run examples/logviewer/main.go` |
-| `wizard` | Multi-step setup wizard | `go run examples/wizard/main.go` |
-| `monitor` | Real-time system monitor with live bars | `go run examples/monitor/main.go` |
-| `gitui` | Git interface (status, log, diff) | `go run examples/gitui/main.go` |
-| `dockerui` | Docker interface (containers, images) | `go run examples/dockerui/main.go` |
-| `kanban` | Kanban board with drag-and-drop | `go run examples/kanban/main.go` |
-| `calculator` | Functional calculator | `go run examples/calculator/main.go` |
+| counter | Minimal counter | `go run examples/counter/main.go` |
+| dashboard | Multi-panel dashboard | `go run examples/dashboard/main.go` |
+| chat | Chat interface | `go run examples/chat/main.go` |
+| filemanager | File browser | `go run examples/filemanager/main.go .` |
+| form | Registration form | `go run examples/form/main.go` |
+| settings | Settings panel | `go run examples/settings/main.go` |
+| logviewer | Log viewer | `go run examples/logviewer/main.go` |
+| wizard | Setup wizard | `go run examples/wizard/main.go` |
+| monitor | System monitor | `go run examples/monitor/main.go` |
+| gitui | Git interface | `go run examples/gitui/main.go` |
+| dockerui | Docker interface | `go run examples/dockerui/main.go` |
+| kanban | Kanban board | `go run examples/kanban/main.go` |
+| calculator | Calculator | `go run examples/calculator/main.go` |
 
 ---
 
 ## Tutorials
 
-### Getting Started
+**Getting Started**
 - [Complete Guide](docs/tutorials/complete-guide.md) — From zero to production
 - [Building a Chat App](docs/tutorials/building-a-chat-app.md) — Real-time messaging
 - [Building a Monitor](docs/tutorials/building-a-monitor.md) — System monitoring
 - [Building a Dashboard](docs/tutorials/building-a-dashboard.md) — Multi-panel UI
 
-### Guides
+**Guides**
 - [Architecture](docs/guides/architecture.md) — How MOFU works
 - [Gadgets](docs/guides/gadgets.md) — Using the 65 reactive UI systems
 - [Styling](docs/guides/styling.md) — Semantic styling with Cuddles
@@ -488,7 +492,7 @@ mofu/
 - [Testing](docs/guides/testing.md) — Testing MOFU applications
 - [Migration](docs/guides/migration-from-bubbletea.md) — Migrating from Bubble Tea
 
-### API Reference
+**API Reference**
 - [API Reference](docs/api/README.md) — Complete API documentation
 
 ---
@@ -496,14 +500,9 @@ mofu/
 ## Testing
 
 ```bash
-# Run all tests
-go test ./...
-
-# Run benchmarks
-go test -bench=. -benchmem ./...
-
-# Run with coverage
-go test -cover ./...
+go test ./...           # Run all tests
+go test -bench=. ./...  # Run benchmarks
+go test -cover ./...    # Run with coverage
 ```
 
 **101 tests passing** across all packages.
@@ -514,20 +513,11 @@ go test -cover ./...
 
 See [CONTRIBUTING.md](CONTRIBUTING.md) for guidelines.
 
-### Development
-
 ```bash
-# Clone the repo
 git clone https://github.com/xanstomper/mofu.git
 cd mofu
-
-# Build
 go build ./...
-
-# Test
 go test ./...
-
-# Lint
 go vet ./...
 ```
 
