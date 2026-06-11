@@ -28,20 +28,11 @@
 
 ---
 
-```
- ███╗   ███╗ ██████╗ ███████╗███████╗
- ████╗ ████║██╔═══██╗██╔════╝██╔════╝
- ██╔████╔██║██║   ██║███████╗███████╗
- ██║╚██╔╝██║██║   ██║╚════██║╚════██║
- ██║ ╚═╝ ██║╚██████╔╝███████║███████║
- ╚═╝     ╚═╝ ╚═════╝ ╚══════╝╚══════╝
-```
+<h1 align="center">MOFU</h1>
 
 <p align="center">
-  <em>Not a TUI framework. A terminal-native application runtime with a reactive visual layer.</em>
+  <strong>A streaming-first reactive runtime for terminal applications</strong>
 </p>
-
----
 
 ## Why MOFU?
 
