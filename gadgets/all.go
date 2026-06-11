@@ -1,20 +1,3 @@
-// Package gadgets provides 50 system-level reactive UI primitives for MOFU.
-//
-// Gadgets are NOT widgets. They are runtime-aware, data-driven reactive systems
-// that compose intelligently with the MOFU runtime.
-//
-// Architecture:
-//   - Each Gadget consumes streams, subscribes to state graph, emits UI nodes
-//   - Layout is declarative (constraints, not positions)
-//   - Animation is declarative (specs, not imperative)
-//   - State flows through Binder, not manual wiring
-//
-// Categories:
-//   - Data & Table Systems (10): LiveTable, DiffTable, HeatTable, etc.
-//   - Navigation & Layout (10): SmartSidebar, AdaptiveSplit, etc.
-//   - Input & Interaction (10): SmartForm, InlineEditor, etc.
-//   - Real-Time Data (10): LogStream, MetricBoard, etc.
-//   - Visual & ASCII (10): ASCIIScene, ParticleField, etc.
 package gadgets
 
 import (
@@ -24,11 +7,7 @@ import (
 	"github.com/xanstomper/mofu"
 )
 
-// =========================================================================
-// CORE INTERFACES
-// =========================================================================
-
-// Gadget is the core interface for all 50 reactive UI systems.
+// Gadget is the core interface for all reactive UI systems.
 type Gadget interface {
 	ID() string
 	Init(ctx GadgetContext) error
@@ -39,7 +18,6 @@ type Gadget interface {
 	Dispose() error
 }
 
-// LayoutContract defines how a gadget participates in layout.
 type LayoutContract interface {
 	MinSize() (w, h int)
 	MaxSize() (w, h int)
@@ -49,7 +27,6 @@ type LayoutContract interface {
 	OverflowBehavior() OverflowMode
 }
 
-// OverflowMode controls content overflow.
 type OverflowMode int
 
 const (
@@ -59,7 +36,6 @@ const (
 	Virtualize
 )
 
-// AnimationHook provides animation lifecycle.
 type AnimationHook interface {
 	OnEnter(ctx AnimContext) AnimationSpec
 	OnExit(ctx AnimContext) AnimationSpec
@@ -67,13 +43,11 @@ type AnimationHook interface {
 	OnLayoutChange(layout LayoutChange) AnimationSpec
 }
 
-// AnimContext provides animation context.
 type AnimContext struct {
 	Width, Height int
 	Time, Delta   int64
 }
 
-// AnimationSpec declares an animation.
 type AnimationSpec struct {
 	Type       string
 	DurationMs int
@@ -82,19 +56,16 @@ type AnimationSpec struct {
 	Interrupt  bool
 }
 
-// StateDelta describes what changed.
 type StateDelta struct {
 	Field, Reason string
 	Old, New      any
 }
 
-// LayoutChange describes a layout change.
 type LayoutChange struct {
 	OldWidth, OldHeight int
 	NewWidth, NewHeight int
 }
 
-// RenderNode is a renderable element.
 type RenderNode struct {
 	Type     string
 	X, Y     int
@@ -105,7 +76,6 @@ type RenderNode struct {
 	Children []RenderNode
 }
 
-// Binder connects gadgets to state.
 type Binder interface {
 	Subscribe(node NodeID)
 	SubscribeStream(name string)
@@ -115,32 +85,24 @@ type Binder interface {
 	EmitStream(name string, data any)
 }
 
-// NodeID is a state node identifier.
 type NodeID string
 
-// Event is a gadget event.
 type Event struct {
 	Type    string
 	Payload any
 	Source  string
 }
 
-// GadgetContext is provided to Init.
 type GadgetContext struct {
 	Binder  Binder
 	Logger  func(format string, args ...any)
 	DataDir string
 }
 
-// StateView provides read-only state access.
 type StateView interface {
 	Get(node NodeID) any
 	Has(node NodeID) bool
 }
-
-// =========================================================================
-// BASE GADGET
-// =========================================================================
 
 // Base provides default implementations.
 type Base struct {
@@ -156,20 +118,20 @@ func NewBase(id string) *Base {
 	return &Base{id: id}
 }
 
-func (b *Base) ID() string            { return b.id }
-func (b *Base) Init(ctx GadgetContext) error { b.binder = ctx.Binder; return nil }
-func (b *Base) Bind(binder Binder)    { b.binder = binder }
-func (b *Base) OnEvent(e Event)       {}
-func (b *Base) OnTick(dt int64)       {}
-func (b *Base) Dispose() error        { return nil }
-func (b *Base) Bounds() mofu.Rect     { return b.bounds }
-func (b *Base) SetBounds(r mofu.Rect) { b.bounds = r }
-func (b *Base) Style() *mofu.Style    { return &b.style }
-func (b *Base) Focus()                { b.focused = true }
-func (b *Base) Blur()                 { b.focused = false }
-func (b *Base) IsFocused() bool       { return b.focused }
-func (b *Base) Children() []Gadget    { return b.children }
-func (b *Base) AddChild(g Gadget)     { b.children = append(b.children, g) }
+func (b *Base) ID() string                       { return b.id }
+func (b *Base) Init(ctx GadgetContext) error     { b.binder = ctx.Binder; return nil }
+func (b *Base) Bind(binder Binder)               { b.binder = binder }
+func (b *Base) OnEvent(e Event)                  {}
+func (b *Base) OnTick(dt int64)                  {}
+func (b *Base) Dispose() error                   { return nil }
+func (b *Base) Bounds() mofu.Rect                { return b.bounds }
+func (b *Base) SetBounds(r mofu.Rect)            { b.bounds = r }
+func (b *Base) Style() *mofu.Style               { return &b.style }
+func (b *Base) Focus()                           { b.focused = true }
+func (b *Base) Blur()                            { b.focused = false }
+func (b *Base) IsFocused() bool                  { return b.focused }
+func (b *Base) Children() []Gadget               { return b.children }
+func (b *Base) AddChild(g Gadget)                { b.children = append(b.children, g) }
 
 func (b *Base) Render(state StateView) []RenderNode {
 	var nodes []RenderNode
@@ -190,10 +152,9 @@ func (l *defaultLayout) AspectRatio() float64           { return 0 }
 func (l *defaultLayout) OverflowBehavior() OverflowMode { return Clip }
 
 // =========================================================================
-// 1-10: DATA & TABLE SYSTEMS
+// DATA & TABLE SYSTEMS
 // =========================================================================
 
-// LiveTable is a virtualized streaming table.
 type LiveTable struct {
 	Base
 	Columns  []string
@@ -209,7 +170,7 @@ func NewLiveTable(id string, cols []string) *LiveTable {
 
 func (g *LiveTable) Render(state StateView) []RenderNode {
 	var nodes []RenderNode
- header := strings.Join(g.Columns, " | ")
+	header := strings.Join(g.Columns, " | ")
 	nodes = append(nodes, RenderNode{Type: "text", Content: header, Style: mofu.DefaultStyle().WithAttrs(mofu.AttrBold)})
 	nodes = append(nodes, RenderNode{Type: "text", Content: strings.Repeat("-", len(header))})
 
@@ -236,13 +197,12 @@ func (g *LiveTable) Render(state StateView) []RenderNode {
 
 func (g *LiveTable) AddRow(row []string) { g.Rows = append(g.Rows, row) }
 
-// DiffTable highlights state changes between snapshots.
 type DiffTable struct {
 	Base
-	Columns    []string
-	PrevRows   [][]string
-	CurrRows   [][]string
-	Selected   int
+	Columns  []string
+	PrevRows [][]string
+	CurrRows [][]string
+	Selected int
 }
 
 func NewDiffTable(id string, cols []string) *DiffTable {
@@ -263,10 +223,29 @@ func (g *DiffTable) Render(state StateView) []RenderNode {
 	return nodes
 }
 
-// HeatTable is a density-based value visualization.
+func renderDensity(rows [][]float64, min, max float64) []RenderNode {
+	var nodes []RenderNode
+	density := " ·░▒▓█"
+	for _, row := range rows {
+		line := ""
+		for _, v := range row {
+			idx := int((v - min) / (max - min) * float64(len(density)-1))
+			if idx < 0 {
+				idx = 0
+			}
+			if idx >= len(density) {
+				idx = len(density) - 1
+			}
+			line += string(density[idx])
+		}
+		nodes = append(nodes, RenderNode{Type: "text", Content: line})
+	}
+	return nodes
+}
+
 type HeatTable struct {
 	Base
-	Data    [][]float64
+	Data     [][]float64
 	Min, Max float64
 }
 
@@ -275,29 +254,16 @@ func NewHeatTable(id string) *HeatTable {
 }
 
 func (g *HeatTable) Render(state StateView) []RenderNode {
-	var nodes []RenderNode
-	density := " ·░▒▓█"
-	for _, row := range g.Data {
-		line := ""
-		for _, v := range row {
-			idx := int((v - g.Min) / (g.Max - g.Min) * float64(len(density)-1))
-			if idx < 0 { idx = 0 }
-			if idx >= len(density) { idx = len(density) - 1 }
-			line += string(density[idx])
-		}
-		nodes = append(nodes, RenderNode{Type: "text", Content: line})
-	}
-	return nodes
+	return renderDensity(g.Data, g.Min, g.Max)
 }
 
-// PagedTable is a lazy loading + pagination engine.
 type PagedTable struct {
 	Base
-	Columns   []string
-	LoadPage  func(page int) [][]string
-	Page      int
-	PageSize  int
-	CurrPage  [][]string
+	Columns  []string
+	LoadPage func(page int) [][]string
+	Page     int
+	PageSize int
+	CurrPage [][]string
 }
 
 func NewPagedTable(id string, cols []string, loader func(int) [][]string) *PagedTable {
@@ -319,17 +285,16 @@ func (g *PagedTable) Load() {
 	}
 }
 
-// TreeTable is an expandable hierarchical dataset.
-type TreeTable struct {
-	Base
-	Nodes   []*TreeNode
-	Selected int
-}
-
 type TreeNode struct {
 	Label    string
 	Children []*TreeNode
 	Expanded bool
+}
+
+type TreeTable struct {
+	Base
+	Nodes    []*TreeNode
+	Selected int
 }
 
 func NewTreeTable(id string) *TreeTable {
@@ -342,7 +307,9 @@ func (g *TreeTable) Render(state StateView) []RenderNode {
 	render = func(n *TreeNode, depth int) {
 		prefix := strings.Repeat("  ", depth)
 		icon := "├─"
-		if n.Expanded { icon = "▼ " }
+		if n.Expanded {
+			icon = "▼ "
+		}
 		nodes = append(nodes, RenderNode{Type: "text", Content: prefix + icon + " " + n.Label})
 		if n.Expanded {
 			for _, child := range n.Children {
@@ -356,11 +323,10 @@ func (g *TreeTable) Render(state StateView) []RenderNode {
 	return nodes
 }
 
-// StreamingGrid is a real-time updating grid view.
 type StreamingGrid struct {
 	Base
-	Cells   [][]string
-	Width   int
+	Cells [][]string
+	Width int
 }
 
 func NewStreamingGrid(id string, w int) *StreamingGrid {
@@ -370,8 +336,7 @@ func NewStreamingGrid(id string, w int) *StreamingGrid {
 func (g *StreamingGrid) Render(state StateView) []RenderNode {
 	var nodes []RenderNode
 	for _, row := range g.Cells {
-		line := strings.Join(row, " ")
-		nodes = append(nodes, RenderNode{Type: "text", Content: line})
+		nodes = append(nodes, RenderNode{Type: "text", Content: strings.Join(row, " ")})
 	}
 	return nodes
 }
@@ -385,7 +350,6 @@ func (g *StreamingGrid) UpdateCell(x, y int, val string) {
 	}
 }
 
-// FilterTable is a reactive filtering + query binding.
 type FilterTable struct {
 	Base
 	Columns []string
@@ -411,7 +375,6 @@ func (g *FilterTable) Render(state StateView) []RenderNode {
 
 func (g *FilterTable) SetFilter(f string) { g.Filter = f }
 
-// SortTable is a multi-key reactive sorting engine.
 type SortTable struct {
 	Base
 	Columns []string
@@ -432,11 +395,10 @@ func (g *SortTable) Render(state StateView) []RenderNode {
 	return nodes
 }
 
-// PivotTableLite is a grouped aggregation view.
 type PivotTableLite struct {
 	Base
-	Groups   map[string][]string
-	GroupBy  int
+	Groups  map[string][]string
+	GroupBy int
 }
 
 func NewPivotTableLite(id string) *PivotTableLite {
@@ -454,7 +416,6 @@ func (g *PivotTableLite) Render(state StateView) []RenderNode {
 	return nodes
 }
 
-// SparseTable is optimized for massive datasets (10k+ rows).
 type SparseTable struct {
 	Base
 	Columns []string
@@ -478,25 +439,29 @@ func (g *SparseTable) Render(state StateView) []RenderNode {
 	return nodes
 }
 
-func (g *SparseTable) SetRow(idx int, row []string) { g.Rows[idx] = row; if idx >= g.Count { g.Count = idx + 1 } }
-
-// =========================================================================
-// 11-20: NAVIGATION & LAYOUT SYSTEMS
-// =========================================================================
-
-// SmartSidebar is an auto-collapsing + priority-aware nav.
-type SmartSidebar struct {
-	Base
-	Items    []SidebarItem
-	Expanded bool
-	Width    int
+func (g *SparseTable) SetRow(idx int, row []string) {
+	g.Rows[idx] = row
+	if idx >= g.Count {
+		g.Count = idx + 1
+	}
 }
+
+// =========================================================================
+// NAVIGATION & LAYOUT
+// =========================================================================
 
 type SidebarItem struct {
 	Label    string
 	Icon     string
 	Priority int
 	Active   bool
+}
+
+type SmartSidebar struct {
+	Base
+	Items    []SidebarItem
+	Expanded bool
+	Width    int
 }
 
 func NewSmartSidebar(id string) *SmartSidebar {
@@ -521,7 +486,6 @@ func (g *SmartSidebar) Render(state StateView) []RenderNode {
 
 func (g *SmartSidebar) Toggle() { g.Expanded = !g.Expanded }
 
-// AdaptiveSplit is an auto layout balancing engine.
 type AdaptiveSplit struct {
 	Base
 	Left, Right Gadget
@@ -534,12 +498,15 @@ func NewAdaptiveSplit(id string, left, right Gadget) *AdaptiveSplit {
 
 func (g *AdaptiveSplit) Render(state StateView) []RenderNode {
 	var nodes []RenderNode
-	if g.Left != nil { nodes = append(nodes, g.Left.Render(state)...) }
-	if g.Right != nil { nodes = append(nodes, g.Right.Render(state)...) }
+	if g.Left != nil {
+		nodes = append(nodes, g.Left.Render(state)...)
+	}
+	if g.Right != nil {
+		nodes = append(nodes, g.Right.Render(state)...)
+	}
 	return nodes
 }
 
-// WorkspaceGrid is a dynamic multi-panel grid system.
 type WorkspaceGrid struct {
 	Base
 	Panels []Gadget
@@ -560,7 +527,6 @@ func (g *WorkspaceGrid) Render(state StateView) []RenderNode {
 
 func (g *WorkspaceGrid) AddPanel(p Gadget) { g.Panels = append(g.Panels, p) }
 
-// InspectorPane is a contextual right-side data inspector.
 type InspectorPane struct {
 	Base
 	Title   string
@@ -580,7 +546,6 @@ func (g *InspectorPane) Render(state StateView) []RenderNode {
 	return nodes
 }
 
-// FocusNavigator is a graph-based navigation system.
 type FocusNavigator struct {
 	Base
 	Focusable []Gadget
@@ -593,31 +558,37 @@ func NewFocusNavigator(id string) *FocusNavigator {
 
 func (g *FocusNavigator) Render(state StateView) []RenderNode {
 	var nodes []RenderNode
-	for i, f := range g.Focusable {
+	for _, f := range g.Focusable {
 		nodes = append(nodes, f.Render(state)...)
-		_ = i
 	}
 	return nodes
 }
 
 func (g *FocusNavigator) FocusNext() {
-	if g.Current < len(g.Focusable)-1 { g.Current++ } else { g.Current = 0 }
+	if g.Current < len(g.Focusable)-1 {
+		g.Current++
+	} else {
+		g.Current = 0
+	}
 }
 
 func (g *FocusNavigator) FocusPrev() {
-	if g.Current > 0 { g.Current-- } else { g.Current = len(g.Focusable) - 1 }
-}
-
-// CommandDock is a persistent action bar system.
-type CommandDock struct {
-	Base
-	Actions []DockAction
+	if g.Current > 0 {
+		g.Current--
+	} else {
+		g.Current = len(g.Focusable) - 1
+	}
 }
 
 type DockAction struct {
 	Label    string
 	Shortcut string
 	Action   func()
+}
+
+type CommandDock struct {
+	Base
+	Actions []DockAction
 }
 
 func NewCommandDock(id string) *CommandDock {
@@ -634,7 +605,6 @@ func (g *CommandDock) Render(state StateView) []RenderNode {
 	return nodes
 }
 
-// ContextOverlay is a floating contextual UI layer.
 type ContextOverlay struct {
 	Base
 	Visible bool
@@ -647,17 +617,18 @@ func NewContextOverlay(id string) *ContextOverlay {
 }
 
 func (g *ContextOverlay) Render(state StateView) []RenderNode {
-	if !g.Visible { return nil }
+	if !g.Visible {
+		return nil
+	}
 	return g.Content
 }
 
-func (g *ContextOverlay) Show()  { g.Visible = true }
-func (g *ContextOverlay) Hide()  { g.Visible = false }
+func (g *ContextOverlay) Show() { g.Visible = true }
+func (g *ContextOverlay) Hide() { g.Visible = false }
 
-// DockingSystem is a draggable panel architecture.
 type DockingSystem struct {
 	Base
-	Panels   []Gadget
+	Panels    []Gadget
 	Positions map[string]DockPosition
 }
 
@@ -675,26 +646,6 @@ func (g *DockingSystem) Render(state StateView) []RenderNode {
 	return nodes
 }
 
-// ViewportManager manages visible UI region only.
-type ViewportManager struct {
-	Base
-	Content  Gadget
-	OffsetY  int
-	Height   int
-}
-
-func NewViewportManager(id string, h int) *ViewportManager {
-	return &ViewportManager{Base: *NewBase(id), Height: h}
-}
-
-func (g *ViewportManager) Render(state StateView) []RenderNode {
-	if g.Content == nil { return nil }
-	return g.Content.Render(state)
-}
-
-func (g *ViewportManager) Scroll(dy int) { g.OffsetY += dy; if g.OffsetY < 0 { g.OffsetY = 0 } }
-
-// ResponsiveLayoutCore is terminal-aware adaptive layouts.
 type ResponsiveLayoutCore struct {
 	Base
 	Breakpoints map[int][]Gadget
@@ -718,16 +669,8 @@ func (g *ResponsiveLayoutCore) Render(state StateView) []RenderNode {
 }
 
 // =========================================================================
-// 21-30: INPUT & INTERACTION SYSTEMS
+// INPUT & INTERACTION
 // =========================================================================
-
-// SmartForm is a schema-driven reactive form.
-type SmartForm struct {
-	Base
-	Fields  []FormField
-	Values  map[string]any
-	Focus   int
-}
 
 type FormField struct {
 	Name     string
@@ -735,6 +678,13 @@ type FormField struct {
 	Type     string
 	Value    any
 	Required bool
+}
+
+type SmartForm struct {
+	Base
+	Fields []FormField
+	Values map[string]any
+	Focus  int
 }
 
 func NewSmartForm(id string) *SmartForm {
@@ -745,7 +695,9 @@ func (g *SmartForm) Render(state StateView) []RenderNode {
 	var nodes []RenderNode
 	for i, f := range g.Fields {
 		style := mofu.DefaultStyle()
-		if i == g.Focus { style = mofu.DefaultStyle().Fg(mofu.Hex("ff69b4")) }
+		if i == g.Focus {
+			style = mofu.DefaultStyle().Fg(mofu.Hex("ff69b4"))
+		}
 		nodes = append(nodes, RenderNode{Type: "text", Content: fmt.Sprintf("%s: %v", f.Label, g.Values[f.Name]), Style: style})
 	}
 	return nodes
@@ -753,7 +705,6 @@ func (g *SmartForm) Render(state StateView) []RenderNode {
 
 func (g *SmartForm) AddField(f FormField) { g.Fields = append(g.Fields, f) }
 
-// InlineEditor is editable text blocks inside UI.
 type InlineEditor struct {
 	Base
 	Value     string
@@ -767,14 +718,15 @@ func NewInlineEditor(id string) *InlineEditor {
 
 func (g *InlineEditor) Render(state StateView) []RenderNode {
 	style := mofu.DefaultStyle()
-	if g.Focused { style = mofu.DefaultStyle().Fg(mofu.Hex("ff69b4")) }
+	if g.Focused {
+		style = mofu.DefaultStyle().Fg(mofu.Hex("ff69b4"))
+	}
 	return []RenderNode{{Type: "text", Content: "[" + g.Value + "]", Style: style}}
 }
 
 func (g *InlineEditor) Insert(r rune) { g.Value += string(r) }
 func (g *InlineEditor) Delete()       { if len(g.Value) > 0 { g.Value = g.Value[:len(g.Value)-1] } }
 
-// KeyChordRouter is an advanced shortcut system.
 type KeyChordRouter struct {
 	Base
 	Routes map[string]func()
@@ -788,18 +740,19 @@ func (g *KeyChordRouter) OnEvent(e Event) {
 	if e.Type == "keypress" {
 		if ke, ok := e.Payload.(mofu.KeyEvent); ok {
 			key := fmt.Sprintf("%d", ke.Key)
-			if fn, ok := g.Routes[key]; ok { fn() }
+			if fn, ok := g.Routes[key]; ok {
+				fn()
+			}
 		}
 	}
 }
 
 func (g *KeyChordRouter) BindKey(key string, fn func()) { g.Routes[key] = fn }
 
-// MultiCursorInput handles multiple simultaneous text inputs.
 type MultiCursorInput struct {
 	Base
-	Inputs   []*InlineEditor
-	Active   int
+	Inputs []*InlineEditor
+	Active int
 }
 
 func NewMultiCursorInput(id string) *MultiCursorInput {
@@ -820,7 +773,6 @@ func (g *MultiCursorInput) AddInput() *InlineEditor {
 	return editor
 }
 
-// AutoCompleteEngine is context-aware suggestions.
 type AutoCompleteEngine struct {
 	Base
 	Query       string
@@ -837,7 +789,9 @@ func (g *AutoCompleteEngine) Render(state StateView) []RenderNode {
 	var nodes []RenderNode
 	for i, s := range g.Suggestions {
 		style := mofu.DefaultStyle()
-		if i == g.Selected { style = mofu.DefaultStyle().Fg(mofu.Hex("ff69b4")) }
+		if i == g.Selected {
+			style = mofu.DefaultStyle().Fg(mofu.Hex("ff69b4"))
+		}
 		nodes = append(nodes, RenderNode{Type: "text", Content: s, Style: style})
 	}
 	return nodes
@@ -848,7 +802,6 @@ func (g *AutoCompleteEngine) Filter(query string) {
 	g.Selected = 0
 }
 
-// ValidatedInputField is a live validation pipeline.
 type ValidatedInputField struct {
 	Base
 	Value     string
@@ -864,7 +817,9 @@ func NewValidatedInputField(id, label string, validator func(string) error) *Val
 
 func (g *ValidatedInputField) Render(state StateView) []RenderNode {
 	style := mofu.DefaultStyle()
-	if g.Error != nil { style = mofu.DefaultStyle().Fg(mofu.Hex("f38ba8")) }
+	if g.Error != nil {
+		style = mofu.DefaultStyle().Fg(mofu.Hex("f38ba8"))
+	}
 	nodes := []RenderNode{{Type: "text", Content: g.Label + ": " + g.Value, Style: style}}
 	if g.Error != nil {
 		nodes = append(nodes, RenderNode{Type: "text", Content: "  " + g.Error.Error(), Style: mofu.DefaultStyle().Fg(mofu.Hex("f38ba8"))})
@@ -874,10 +829,13 @@ func (g *ValidatedInputField) Render(state StateView) []RenderNode {
 
 func (g *ValidatedInputField) SetValue(v string) {
 	g.Value = v
-	if g.Validator != nil { g.Error = g.Validator(v) } else { g.Error = nil }
+	if g.Validator != nil {
+		g.Error = g.Validator(v)
+	} else {
+		g.Error = nil
+	}
 }
 
-// InputStreamRouter is an event routing pipeline.
 type InputStreamRouter struct {
 	Base
 	Routes map[string]func(Event)
@@ -888,12 +846,13 @@ func NewInputStreamRouter(id string) *InputStreamRouter {
 }
 
 func (g *InputStreamRouter) OnEvent(e Event) {
-	if fn, ok := g.Routes[e.Type]; ok { fn(e) }
+	if fn, ok := g.Routes[e.Type]; ok {
+		fn(e)
+	}
 }
 
 func (g *InputStreamRouter) Route(eventType string, fn func(Event)) { g.Routes[eventType] = fn }
 
-// GestureInputLayer is a mouse + trackpad abstraction.
 type GestureInputLayer struct {
 	Base
 	Handlers map[string]func(x, y int)
@@ -907,17 +866,18 @@ func (g *GestureInputLayer) OnEvent(e Event) {
 	if e.Type == "mouse" {
 		if me, ok := e.Payload.(mofu.MouseEvent); ok {
 			key := fmt.Sprintf("%d-%d", me.Button, me.Action)
-			if fn, ok := g.Handlers[key]; ok { fn(me.X, me.Y) }
+			if fn, ok := g.Handlers[key]; ok {
+				fn(me.X, me.Y)
+			}
 		}
 	}
 }
 
 func (g *GestureInputLayer) OnGesture(name string, fn func(x, y int)) { g.Handlers[name] = fn }
 
-// FocusTrapManager is controlled input boundaries.
 type FocusTrapManager struct {
 	Base
-	Trapped  bool
+	Trapped bool
 	Trapped_ Gadget
 }
 
@@ -926,7 +886,9 @@ func NewFocusTrapManager(id string) *FocusTrapManager {
 }
 
 func (g *FocusTrapManager) Render(state StateView) []RenderNode {
-	if g.Trapped && g.Trapped_ != nil { return g.Trapped_.Render(state) }
+	if g.Trapped && g.Trapped_ != nil {
+		return g.Trapped_.Render(state)
+	}
 	return nil
 }
 
@@ -934,10 +896,9 @@ func (g *FocusTrapManager) Trap(gadget Gadget) { g.Trapped = true; g.Trapped_ = 
 func (g *FocusTrapManager) Release()           { g.Trapped = false; g.Trapped_ = nil }
 
 // =========================================================================
-// 31-40: REAL-TIME DATA SYSTEMS
+// REAL-TIME DATA
 // =========================================================================
 
-// LogStream is zero-copy streaming logs.
 type LogStream struct {
 	Base
 	Lines    []string
@@ -954,17 +915,27 @@ func (g *LogStream) Render(state StateView) []RenderNode {
 	var nodes []RenderNode
 	for i := len(g.Lines) - 1 - g.Offset; i >= 0 && i < len(g.Lines); i-- {
 		line := g.Lines[i]
-		if g.Filter != "" && !strings.Contains(strings.ToLower(line), strings.ToLower(g.Filter)) { continue }
+		if g.Filter != "" && !strings.Contains(strings.ToLower(line), strings.ToLower(g.Filter)) {
+			continue
+		}
 		style := mofu.DefaultStyle()
-		if strings.Contains(line, "ERROR") { style = mofu.DefaultStyle().Fg(mofu.Hex("f38ba8")) } else if strings.Contains(line, "WARN") { style = mofu.DefaultStyle().Fg(mofu.Hex("f9e2af")) }
+		if strings.Contains(line, "ERROR") {
+			style = mofu.DefaultStyle().Fg(mofu.Hex("f38ba8"))
+		} else if strings.Contains(line, "WARN") {
+			style = mofu.DefaultStyle().Fg(mofu.Hex("f9e2af"))
+		}
 		nodes = append(nodes, RenderNode{Type: "text", Content: line, Style: style})
 	}
 	return nodes
 }
 
-func (g *LogStream) Append(line string) { g.Lines = append(g.Lines, line); if len(g.Lines) > g.MaxLines { g.Lines = g.Lines[len(g.Lines)-g.MaxLines:] } }
+func (g *LogStream) Append(line string) {
+	g.Lines = append(g.Lines, line)
+	if len(g.Lines) > g.MaxLines {
+		g.Lines = g.Lines[len(g.Lines)-g.MaxLines:]
+	}
+}
 
-// MetricBoard is real-time system metrics.
 type MetricBoard struct {
 	Base
 	Metrics map[string]float64
@@ -979,7 +950,9 @@ func (g *MetricBoard) Render(state StateView) []RenderNode {
 	var nodes []RenderNode
 	for k, v := range g.Metrics {
 		label := k
-		if l, ok := g.Labels[k]; ok { label = l }
+		if l, ok := g.Labels[k]; ok {
+			label = l
+		}
 		nodes = append(nodes, RenderNode{Type: "text", Content: fmt.Sprintf("%-20s %8.2f", label, v)})
 	}
 	return nodes
@@ -987,7 +960,6 @@ func (g *MetricBoard) Render(state StateView) []RenderNode {
 
 func (g *MetricBoard) Set(name string, value float64) { g.Metrics[name] = value }
 
-// EventFeed is a live event timeline.
 type EventFeed struct {
 	Base
 	Events []EventEntry
@@ -1013,12 +985,11 @@ func (g *EventFeed) Render(state StateView) []RenderNode {
 	return nodes
 }
 
-func (g *EventFeed) Add(e EventEntry) { g.Events = append(g.Events, e); if len(g.Events) > g.Max { g.Events = g.Events[len(g.Events)-g.Max:] } }
-
-// ProcessTreeView is OS process visualization.
-type ProcessTreeView struct {
-	Base
-	Processes []ProcessInfo
+func (g *EventFeed) Add(e EventEntry) {
+	g.Events = append(g.Events, e)
+	if len(g.Events) > g.Max {
+		g.Events = g.Events[len(g.Events)-g.Max:]
+	}
 }
 
 type ProcessInfo struct {
@@ -1026,6 +997,11 @@ type ProcessInfo struct {
 	Name   string
 	CPU    float64
 	Memory float64
+}
+
+type ProcessTreeView struct {
+	Base
+	Processes []ProcessInfo
 }
 
 func NewProcessTreeView(id string) *ProcessTreeView {
@@ -1041,17 +1017,16 @@ func (g *ProcessTreeView) Render(state StateView) []RenderNode {
 	return nodes
 }
 
-// NetworkMonitor is live request/packet visualization.
-type NetworkMonitor struct {
-	Base
-	Requests []NetworkRequest
-}
-
 type NetworkRequest struct {
 	Method string
 	URL    string
 	Status int
 	Time   int64
+}
+
+type NetworkMonitor struct {
+	Base
+	Requests []NetworkRequest
 }
 
 func NewNetworkMonitor(id string) *NetworkMonitor {
@@ -1063,23 +1038,26 @@ func (g *NetworkMonitor) Render(state StateView) []RenderNode {
 	for _, r := range g.Requests {
 		status := fmt.Sprintf("%d", r.Status)
 		style := mofu.DefaultStyle()
-		if r.Status >= 400 { style = mofu.DefaultStyle().Fg(mofu.Hex("f38ba8")) } else if r.Status >= 200 { style = mofu.DefaultStyle().Fg(mofu.Hex("a6e3a1")) }
+		if r.Status >= 400 {
+			style = mofu.DefaultStyle().Fg(mofu.Hex("f38ba8"))
+		} else if r.Status >= 200 {
+			style = mofu.DefaultStyle().Fg(mofu.Hex("a6e3a1"))
+		}
 		nodes = append(nodes, RenderNode{Type: "text", Content: fmt.Sprintf("%s %s %s %dms", r.Method, r.URL, status, r.Time), Style: style})
 	}
 	return nodes
-}
-
-// FileWatcherView is a reactive filesystem UI.
-type FileWatcherView struct {
-	Base
-	Files   []FileInfo
-	Root    string
 }
 
 type FileInfo struct {
 	Name  string
 	Size  int64
 	IsDir bool
+}
+
+type FileWatcherView struct {
+	Base
+	Files []FileInfo
+	Root  string
 }
 
 func NewFileWatcherView(id, root string) *FileWatcherView {
@@ -1091,16 +1069,17 @@ func (g *FileWatcherView) Render(state StateView) []RenderNode {
 	nodes = append(nodes, RenderNode{Type: "text", Content: g.Root, Style: mofu.DefaultStyle().WithAttrs(mofu.AttrBold)})
 	for _, f := range g.Files {
 		icon := "📄"
-		if f.IsDir { icon = "📁" }
+		if f.IsDir {
+			icon = "📁"
+		}
 		nodes = append(nodes, RenderNode{Type: "text", Content: fmt.Sprintf("%s %s (%d bytes)", icon, f.Name, f.Size)})
 	}
 	return nodes
 }
 
-// StreamConsole is a continuous CLI output engine.
 type StreamConsole struct {
 	Base
-	Lines   []string
+	Lines    []string
 	MaxLines int
 }
 
@@ -1116,18 +1095,22 @@ func (g *StreamConsole) Render(state StateView) []RenderNode {
 	return nodes
 }
 
-func (g *StreamConsole) Write(line string) { g.Lines = append(g.Lines, line); if len(g.Lines) > g.MaxLines { g.Lines = g.Lines[len(g.Lines)-g.MaxLines:] } }
-
-// TraceViewer is an execution tracing system.
-type TraceViewer struct {
-	Base
-	Spans   []TraceSpan
+func (g *StreamConsole) Write(line string) {
+	g.Lines = append(g.Lines, line)
+	if len(g.Lines) > g.MaxLines {
+		g.Lines = g.Lines[len(g.Lines)-g.MaxLines:]
+	}
 }
 
 type TraceSpan struct {
 	Name     string
 	Duration int64
 	Depth    int
+}
+
+type TraceViewer struct {
+	Base
+	Spans []TraceSpan
 }
 
 func NewTraceViewer(id string) *TraceViewer {
@@ -1143,16 +1126,15 @@ func (g *TraceViewer) Render(state StateView) []RenderNode {
 	return nodes
 }
 
-// PipelineVisualizer is a data flow visualization.
-type PipelineVisualizer struct {
-	Base
-	Stages []PipelineStage
-}
-
 type PipelineStage struct {
 	Name   string
 	Status string
 	Count  int
+}
+
+type PipelineVisualizer struct {
+	Base
+	Stages []PipelineStage
 }
 
 func NewPipelineVisualizer(id string) *PipelineVisualizer {
@@ -1163,18 +1145,21 @@ func (g *PipelineVisualizer) Render(state StateView) []RenderNode {
 	var nodes []RenderNode
 	for i, s := range g.Stages {
 		arrow := " → "
-		if i == len(g.Stages)-1 { arrow = "" }
+		if i == len(g.Stages)-1 {
+			arrow = ""
+		}
 		style := mofu.DefaultStyle()
-		if s.Status == "active" { style = mofu.DefaultStyle().Fg(mofu.Hex("a6e3a1")) }
+		if s.Status == "active" {
+			style = mofu.DefaultStyle().Fg(mofu.Hex("a6e3a1"))
+		}
 		nodes = append(nodes, RenderNode{Type: "text", Content: fmt.Sprintf("[%s] %s (%d)%s", s.Status, s.Name, s.Count, arrow), Style: style})
 	}
 	return nodes
 }
 
-// StateInspector is a live state graph debugger.
 type StateInspector struct {
 	Base
-	Nodes   map[string]any
+	Nodes map[string]any
 }
 
 func NewStateInspector(id string) *StateInspector {
@@ -1193,10 +1178,9 @@ func (g *StateInspector) Render(state StateView) []RenderNode {
 func (g *StateInspector) Set(k string, v any) { g.Nodes[k] = v }
 
 // =========================================================================
-// 41-50: VISUAL + ASCII SYSTEMS
+// VISUAL & ASCII
 // =========================================================================
 
-// ASCIIScene is a full scene graph rendering engine.
 type ASCIIScene struct {
 	Base
 	Width, Height int
@@ -1244,13 +1228,6 @@ func (g *ASCIIScene) Clear() {
 	}
 }
 
-// ParticleField is a terminal particle system.
-type ParticleField struct {
-	Base
-	Particles []Particle
-	Width, Height int
-}
-
 type Particle struct {
 	X, Y   float64
 	VX, VY float64
@@ -1258,24 +1235,39 @@ type Particle struct {
 	Char   rune
 }
 
+type ParticleField struct {
+	Base
+	Particles      []Particle
+	Width, Height  int
+	particleMap    map[[2]int]bool
+}
+
 func NewParticleField(id string, w, h int) *ParticleField {
-	return &ParticleField{Base: *NewBase(id), Width: w, Height: h}
+	return &ParticleField{Base: *NewBase(id), Width: w, Height: h, particleMap: make(map[[2]int]bool)}
 }
 
 func (g *ParticleField) Render(state StateView) []RenderNode {
+	g.particleMap = make(map[[2]int]bool)
+	for _, p := range g.Particles {
+		if p.Life > 0 {
+			g.particleMap[[2]int{int(p.X), int(p.Y)}] = true
+		}
+	}
+
 	var nodes []RenderNode
 	for y := 0; y < g.Height; y++ {
 		line := ""
 		for x := 0; x < g.Width; x++ {
-			found := false
-			for _, p := range g.Particles {
-				if int(p.X) == x && int(p.Y) == y && p.Life > 0 {
-					line += string(p.Char)
-					found = true
-					break
+			if g.particleMap[[2]int{x, y}] {
+				for _, p := range g.Particles {
+					if int(p.X) == x && int(p.Y) == y && p.Life > 0 {
+						line += string(p.Char)
+						break
+					}
 				}
+			} else {
+				line += " "
 			}
-			if !found { line += " " }
 		}
 		nodes = append(nodes, RenderNode{Type: "text", Content: line})
 	}
@@ -1283,7 +1275,11 @@ func (g *ParticleField) Render(state StateView) []RenderNode {
 }
 
 func (g *ParticleField) Emit(x, y float64, ch rune) {
-	g.Particles = append(g.Particles, Particle{X: x, Y: y, VX: (float64(len(g.Particles)%3) - 1) * 0.5, VY: -1, Life: 20, Char: ch})
+	g.Particles = append(g.Particles, Particle{
+		X: x, Y: y,
+		VX: (float64(len(g.Particles)%3) - 1) * 0.5,
+		VY: -1, Life: 20, Char: ch,
+	})
 }
 
 func (g *ParticleField) Update() {
@@ -1294,17 +1290,19 @@ func (g *ParticleField) Update() {
 	}
 	alive := 0
 	for _, p := range g.Particles {
-		if p.Life > 0 { g.Particles[alive] = p; alive++ }
+		if p.Life > 0 {
+			g.Particles[alive] = p
+			alive++
+		}
 	}
 	g.Particles = g.Particles[:alive]
 }
 
-// SplashComposer is animated boot sequences.
 type SplashComposer struct {
 	Base
-	Lines  []string
-	Frame  int
-	Total  int
+	Lines []string
+	Frame int
+	Total int
 }
 
 func NewSplashComposer(id string, lines []string) *SplashComposer {
@@ -1319,14 +1317,17 @@ func (g *SplashComposer) Render(state StateView) []RenderNode {
 	return nodes
 }
 
-func (g *SplashComposer) Advance() { if g.Frame < g.Total { g.Frame++ } }
+func (g *SplashComposer) Advance() {
+	if g.Frame < g.Total {
+		g.Frame++
+	}
+}
 
-// WaveVisualizer is an audio/data waveform renderer.
 type WaveVisualizer struct {
 	Base
-	Values  []float64
-	Width   int
-	Char    rune
+	Values []float64
+	Width  int
+	Char   rune
 }
 
 func NewWaveVisualizer(id string, w int) *WaveVisualizer {
@@ -1334,27 +1335,43 @@ func NewWaveVisualizer(id string, w int) *WaveVisualizer {
 }
 
 func (g *WaveVisualizer) Render(state StateView) []RenderNode {
-	var nodes []RenderNode
-	if len(g.Values) == 0 { return nodes }
-	max := 0.0
-	for _, v := range g.Values { if v > max { max = v } }
-	if max == 0 { max = 1 }
-	line := ""
-	for i := 0; i < g.Width; i++ {
-		idx := i * len(g.Values) / g.Width
-		if idx >= len(g.Values) { idx = len(g.Values) - 1 }
-		h := int(g.Values[idx] / max * 8)
-		if h == 0 { line += " " } else { line += strings.Repeat(string(g.Char), 1) }
+	if len(g.Values) == 0 {
+		return nil
 	}
-	nodes = append(nodes, RenderNode{Type: "text", Content: line})
+	max := 0.0
+	for _, v := range g.Values {
+		if v > max {
+			max = v
+		}
+	}
+	if max == 0 {
+		max = 1
+	}
+
+	var nodes []RenderNode
+	for row := 7; row >= 0; row-- {
+		line := ""
+		for x := 0; x < g.Width; x++ {
+			idx := x * len(g.Values) / g.Width
+			if idx >= len(g.Values) {
+				idx = len(g.Values) - 1
+			}
+			h := int(g.Values[idx] / max * 8)
+			if h > row {
+				line += string(g.Char)
+			} else {
+				line += " "
+			}
+		}
+		nodes = append(nodes, RenderNode{Type: "text", Content: line})
+	}
 	return nodes
 }
 
-// DensityMapRenderer is heat/flow visualization.
 type DensityMapRenderer struct {
 	Base
-	Data    [][]float64
-	Width, Height int
+	Data           [][]float64
+	Width, Height  int
 }
 
 func NewDensityMapRenderer(id string, w, h int) *DensityMapRenderer {
@@ -1362,24 +1379,9 @@ func NewDensityMapRenderer(id string, w, h int) *DensityMapRenderer {
 }
 
 func (g *DensityMapRenderer) Render(state StateView) []RenderNode {
-	var nodes []RenderNode
-	density := " ·░▒▓█"
-	for y := 0; y < g.Height; y++ {
-		line := ""
-		for x := 0; x < g.Width; x++ {
-			val := 0.0
-			if y < len(g.Data) && x < len(g.Data[y]) { val = g.Data[y][x] }
-			idx := int(val * float64(len(density)-1))
-			if idx < 0 { idx = 0 }
-			if idx >= len(density) { idx = len(density) - 1 }
-			line += string(density[idx])
-		}
-		nodes = append(nodes, RenderNode{Type: "text", Content: line})
-	}
-	return nodes
+	return renderDensity(g.Data, 0, 1)
 }
 
-// ProceduralArtEngine is generative ASCII visuals.
 type ProceduralArtEngine struct {
 	Base
 	Width, Height int
@@ -1406,11 +1408,10 @@ func (g *ProceduralArtEngine) Render(state StateView) []RenderNode {
 	return nodes
 }
 
-// MotionBanner is animated headers/logos.
 type MotionBanner struct {
 	Base
-	Text     string
-	Offset   int
+	Text      string
+	Offset    int
 	Direction int
 }
 
@@ -1425,10 +1426,11 @@ func (g *MotionBanner) Render(state StateView) []RenderNode {
 
 func (g *MotionBanner) Advance() {
 	g.Offset += g.Direction
-	if g.Offset > 10 || g.Offset < 0 { g.Direction = -g.Direction }
+	if g.Offset > 10 || g.Offset < 0 {
+		g.Direction = -g.Direction
+	}
 }
 
-// GlyphMorpher is character morph animations.
 type GlyphMorpher struct {
 	Base
 	From, To rune
@@ -1441,22 +1443,25 @@ func NewGlyphMorpher(id string, from, to rune) *GlyphMorpher {
 
 func (g *GlyphMorpher) Render(state StateView) []RenderNode {
 	ch := g.From
-	if g.Progress > 0.5 { ch = g.To }
+	if g.Progress > 0.5 {
+		ch = g.To
+	}
 	return []RenderNode{{Type: "text", Content: string(ch), Style: mofu.DefaultStyle().Fg(mofu.Hex("ff69b4"))}}
 }
 
 func (g *GlyphMorpher) Advance(p float64) { g.Progress = p }
 
-// TerminalCanvas is pixel-like drawing abstraction.
 type TerminalCanvas struct {
 	Base
 	Width, Height int
-	Pixels         [][]mofu.Color
+	Pixels        [][]mofu.Color
 }
 
 func NewTerminalCanvas(id string, w, h int) *TerminalCanvas {
 	pixels := make([][]mofu.Color, h)
-	for i := range pixels { pixels[i] = make([]mofu.Color, w) }
+	for i := range pixels {
+		pixels[i] = make([]mofu.Color, w)
+	}
 	return &TerminalCanvas{Base: *NewBase(id), Width: w, Height: h, Pixels: pixels}
 }
 
@@ -1469,8 +1474,12 @@ func (g *TerminalCanvas) Render(state StateView) []RenderNode {
 			c := g.Pixels[y][x]
 			brightness := float64(c.R+uint8(c.G)+uint8(c.B)) / 765.0
 			idx := int(brightness * float64(len(density)-1))
-			if idx < 0 { idx = 0 }
-			if idx >= len(density) { idx = len(density) - 1 }
+			if idx < 0 {
+				idx = 0
+			}
+			if idx >= len(density) {
+				idx = len(density) - 1
+			}
 			line += string(density[idx])
 		}
 		nodes = append(nodes, RenderNode{Type: "text", Content: line})
@@ -1479,10 +1488,11 @@ func (g *TerminalCanvas) Render(state StateView) []RenderNode {
 }
 
 func (g *TerminalCanvas) SetPixel(x, y int, c mofu.Color) {
-	if x >= 0 && x < g.Width && y >= 0 && y < g.Height { g.Pixels[y][x] = c }
+	if x >= 0 && x < g.Width && y >= 0 && y < g.Height {
+		g.Pixels[y][x] = c
+	}
 }
 
-// SDFRendererLite is signed-distance-field ASCII approximation.
 type SDFRendererLite struct {
 	Base
 	Width, Height int
@@ -1503,8 +1513,12 @@ func (g *SDFRendererLite) Render(state StateView) []RenderNode {
 			fy := float64(y) / float64(g.Height) * 2 - 1
 			val := g.SDF(fx, fy)
 			idx := int((1 - val) * float64(len(density)-1))
-			if idx < 0 { idx = 0 }
-			if idx >= len(density) { idx = len(density) - 1 }
+			if idx < 0 {
+				idx = 0
+			}
+			if idx >= len(density) {
+				idx = len(density) - 1
+			}
 			line += string(density[idx])
 		}
 		nodes = append(nodes, RenderNode{Type: "text", Content: line})

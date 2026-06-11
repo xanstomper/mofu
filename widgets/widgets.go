@@ -6,10 +6,6 @@ import (
 	"github.com/xanstomper/mofu"
 )
 
-// ---------------------------------------------------------------------------
-// Widget Lifecycle (Anthology Ch.9 §9.1)
-// ---------------------------------------------------------------------------
-
 // WidgetID uniquely identifies a widget in the tree.
 type WidgetID uint64
 
@@ -36,10 +32,6 @@ type Selectable interface {
 	Deselect()
 	IsSelected() bool
 }
-
-// ---------------------------------------------------------------------------
-// Container (Anthology Ch.9 §9.2)
-// ---------------------------------------------------------------------------
 
 // Container wraps a single child with border, padding, margin, and background.
 type Container struct {
@@ -127,10 +119,6 @@ func (c *Container) Unmount() {
 	}
 }
 
-// ---------------------------------------------------------------------------
-// Overlay (Anthology Ch.9 §9.2)
-// ---------------------------------------------------------------------------
-
 // Overlay renders children stacked (z-ordered).
 type Overlay struct {
 	mofu.BaseNode
@@ -177,10 +165,6 @@ func (o *Overlay) Unmount() {
 		child.Unmount()
 	}
 }
-
-// ---------------------------------------------------------------------------
-// Flex (Anthology Ch.9 §9.2)
-// ---------------------------------------------------------------------------
 
 // FlexDirection controls flex layout direction.
 type FlexDirection uint8
@@ -268,12 +252,7 @@ func (f *Flex) Unmount() {
 	}
 }
 
-// ---------------------------------------------------------------------------
-// RenderCache (Anthology Ch.9 §9.4)
-// ---------------------------------------------------------------------------
-
 // RenderCache stores pre-rendered content keyed by a content hash.
-// Callers should Invalidate() when state changes.
 type RenderCache struct {
 	lines []string
 	hash  uint64

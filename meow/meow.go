@@ -1,25 +1,3 @@
-// Package meow provides a schema-driven reactive form system for MOFU.
-//
-// Meow replaces manual form construction with declarative schemas:
-//
-//	form := meow.NewForm(
-//	    meow.Input("name", "Name").Required(),
-//	    meow.Input("email", "Email").Email(),
-//	    meow.Select("role", "Role", []string{"Admin", "User"}),
-//	    meow.Checkbox("agree", "I agree to terms"),
-//	)
-//
-//	form.OnSubmit(func(values map[string]any) mofu.Cmd {
-//	    // handle submission
-//	    return nil
-//	})
-//
-// Features:
-//   - Schema-driven UI generation
-//   - Live validation
-//   - Conditional fields
-//   - Computed values
-//   - Dependency tracking
 package meow
 
 import (
@@ -30,11 +8,6 @@ import (
 	"github.com/xanstomper/mofu"
 )
 
-// ---------------------------------------------------------------------------
-// Field Types
-// ---------------------------------------------------------------------------
-
-// FieldType identifies the kind of form field.
 type FieldType int
 
 const (
@@ -48,7 +21,6 @@ const (
 	FieldDate
 )
 
-// Field is a single form field.
 type Field struct {
 	Type        FieldType
 	Name        string
@@ -57,97 +29,51 @@ type Field struct {
 	Placeholder string
 	Required    bool
 	Disabled    bool
-	Options     []string // for select
+	Options     []string
 	Validator   func(any) error
-	Visible     func(values map[string]any) bool // conditional visibility
-	Computed    func(values map[string]any) any  // computed value
+	Visible     func(values map[string]any) bool
+	Computed    func(values map[string]any) any
 }
 
-// Input creates a text input field.
 func Input(name, label string) *Field {
 	return &Field{Type: FieldInput, Name: name, Label: label}
 }
 
-// Select creates a select field.
 func Select(name, label string, options []string) *Field {
 	return &Field{Type: FieldSelect, Name: name, Label: label, Options: options}
 }
 
-// Checkbox creates a checkbox field.
 func Checkbox(name, label string) *Field {
 	return &Field{Type: FieldCheckbox, Name: name, Label: label}
 }
 
-// Textarea creates a textarea field.
 func Textarea(name, label string) *Field {
 	return &Field{Type: FieldTextarea, Name: name, Label: label}
 }
 
-// Password creates a password input field.
 func Password(name, label string) *Field {
 	return &Field{Type: FieldPassword, Name: name, Label: label}
 }
 
-// Number creates a number input field.
 func Number(name, label string) *Field {
 	return &Field{Type: FieldNumber, Name: name, Label: label}
 }
 
-// Email creates an email input field.
 func Email(name, label string) *Field {
 	return &Field{Type: FieldEmail, Name: name, Label: label, Validator: validateEmail}
 }
 
-// Date creates a date input field.
 func Date(name, label string) *Field {
 	return &Field{Type: FieldDate, Name: name, Label: label}
 }
 
-// ---------------------------------------------------------------------------
-// Field Modifiers
-// ---------------------------------------------------------------------------
+func (f *Field) SetRequired() *Field   { f.Required = true; return f }
+func (f *Field) SetDisabled() *Field   { f.Disabled = true; return f }
+func (f *Field) SetPlaceholder(text string) *Field { f.Placeholder = text; return f }
+func (f *Field) Validate(fn func(any) error) *Field { f.Validator = fn; return f }
+func (f *Field) When(fn func(values map[string]any) bool) *Field { f.Visible = fn; return f }
+func (f *Field) Compute(fn func(values map[string]any) any) *Field { f.Computed = fn; return f }
 
-// SetRequired marks the field as required.
-func (f *Field) SetRequired() *Field {
-	f.Required = true
-	return f
-}
-
-// SetDisabled disables the field.
-func (f *Field) SetDisabled() *Field {
-	f.Disabled = true
-	return f
-}
-
-// SetPlaceholder sets the placeholder text.
-func (f *Field) SetPlaceholder(text string) *Field {
-	f.Placeholder = text
-	return f
-}
-
-// Validate sets a custom validator.
-func (f *Field) Validate(fn func(any) error) *Field {
-	f.Validator = fn
-	return f
-}
-
-// When makes the field conditionally visible.
-func (f *Field) When(fn func(values map[string]any) bool) *Field {
-	f.Visible = fn
-	return f
-}
-
-// Compute makes the field value computed from other fields.
-func (f *Field) Compute(fn func(values map[string]any) any) *Field {
-	f.Computed = fn
-	return f
-}
-
-// ---------------------------------------------------------------------------
-// Form
-// ---------------------------------------------------------------------------
-
-// Form is a schema-driven reactive form.
 type Form struct {
 	fields   []*Field
 	values   map[string]any
@@ -158,14 +84,12 @@ type Form struct {
 	dirty    bool
 }
 
-// NewForm creates a form from field definitions.
 func NewForm(fields ...*Field) *Form {
 	f := &Form{
 		fields: fields,
 		values: make(map[string]any),
 		errors: make(map[string]error),
 	}
-	// Initialize values
 	for _, field := range fields {
 		if field.Computed == nil {
 			f.values[field.Name] = field.Value
@@ -174,64 +98,37 @@ func NewForm(fields ...*Field) *Form {
 	return f
 }
 
-// OnChange registers a callback when any field changes.
 func (f *Form) OnChange(fn func(name string, value any)) *Form {
 	f.onChange = fn
 	return f
 }
 
-// OnSubmit registers a callback when the form is submitted.
 func (f *Form) OnSubmit(fn func(values map[string]any) mofu.Cmd) *Form {
 	f.onSubmit = fn
 	return f
 }
 
-// Values returns the current form values.
-func (f *Form) Values() map[string]any {
-	return f.values
-}
+func (f *Form) Values() map[string]any      { return f.values }
+func (f *Form) Value(name string) any        { return f.values[name] }
+func (f *Form) Errors() map[string]error     { return f.errors }
+func (f *Form) Error(name string) error      { return f.errors[name] }
+func (f *Form) Valid() bool                  { return len(f.errors) == 0 }
+func (f *Form) CurrentField() *Field         { return f.fields[f.focus] }
 
-// Value returns a single field value.
-func (f *Form) Value(name string) any {
-	return f.values[name]
-}
-
-// SetValue sets a field value.
 func (f *Form) SetValue(name string, value any) {
 	f.values[name] = value
 	f.dirty = true
-
-	// Recompute computed fields
 	for _, field := range f.fields {
 		if field.Computed != nil {
 			f.values[field.Name] = field.Computed(f.values)
 		}
 	}
-
-	// Validate
 	f.validateField(name)
-
 	if f.onChange != nil {
 		f.onChange(name, value)
 	}
 }
 
-// Errors returns all validation errors.
-func (f *Form) Errors() map[string]error {
-	return f.errors
-}
-
-// Error returns the error for a specific field.
-func (f *Form) Error(name string) error {
-	return f.errors[name]
-}
-
-// Valid reports whether the form has no errors.
-func (f *Form) Valid() bool {
-	return len(f.errors) == 0
-}
-
-// Submit validates and submits the form.
 func (f *Form) Submit() mofu.Cmd {
 	f.validateAll()
 	if !f.Valid() {
@@ -243,7 +140,6 @@ func (f *Form) Submit() mofu.Cmd {
 	return nil
 }
 
-// FocusNext moves focus to the next visible field.
 func (f *Form) FocusNext() {
 	start := f.focus
 	for {
@@ -257,7 +153,6 @@ func (f *Form) FocusNext() {
 	}
 }
 
-// FocusPrev moves focus to the previous visible field.
 func (f *Form) FocusPrev() {
 	start := f.focus
 	for {
@@ -273,18 +168,6 @@ func (f *Form) FocusPrev() {
 		}
 	}
 }
-
-// CurrentField returns the currently focused field.
-func (f *Form) CurrentField() *Field {
-	if f.focus >= 0 && f.focus < len(f.fields) {
-		return f.fields[f.focus]
-	}
-	return nil
-}
-
-// ---------------------------------------------------------------------------
-// Validation
-// ---------------------------------------------------------------------------
 
 func (f *Form) validateField(name string) {
 	for _, field := range f.fields {
@@ -322,16 +205,9 @@ func (f *Form) validateAll() {
 	}
 }
 
-// ---------------------------------------------------------------------------
-// Validation Helpers
-// ---------------------------------------------------------------------------
-
 func validateEmail(v any) error {
 	s, ok := v.(string)
-	if !ok {
-		return nil
-	}
-	if s == "" {
+	if !ok || s == "" {
 		return nil
 	}
 	emailRegex := regexp.MustCompile(`^[a-zA-Z0-9._%+\-]+@[a-zA-Z0-9.\-]+\.[a-zA-Z]{2,}$`)
@@ -341,7 +217,7 @@ func validateEmail(v any) error {
 	return nil
 }
 
-func validateMinLength(min int) func(any) error {
+func ValidateMinLength(min int) func(any) error {
 	return func(v any) error {
 		s, ok := v.(string)
 		if !ok {
@@ -354,7 +230,7 @@ func validateMinLength(min int) func(any) error {
 	}
 }
 
-func validateMaxLength(max int) func(any) error {
+func ValidateMaxLength(max int) func(any) error {
 	return func(v any) error {
 		s, ok := v.(string)
 		if !ok {
@@ -367,7 +243,6 @@ func validateMaxLength(max int) func(any) error {
 	}
 }
 
-// ValidateMinValue validates that a number is at least min.
 func ValidateMinValue(min float64) func(any) error {
 	return func(v any) error {
 		switch n := v.(type) {
@@ -384,7 +259,6 @@ func ValidateMinValue(min float64) func(any) error {
 	}
 }
 
-// ValidateMaxValue validates that a number is at most max.
 func ValidateMaxValue(max float64) func(any) error {
 	return func(v any) error {
 		switch n := v.(type) {
@@ -401,7 +275,6 @@ func ValidateMaxValue(max float64) func(any) error {
 	}
 }
 
-// ValidateRange validates that a number is within [min, max].
 func ValidateRange(min, max float64) func(any) error {
 	return func(v any) error {
 		switch n := v.(type) {
@@ -418,7 +291,6 @@ func ValidateRange(min, max float64) func(any) error {
 	}
 }
 
-// ValidateURL validates URL format.
 func ValidateURL(v any) error {
 	s, ok := v.(string)
 	if !ok || s == "" {
@@ -430,13 +302,11 @@ func ValidateURL(v any) error {
 	return nil
 }
 
-// ValidatePhone validates phone number format.
 func ValidatePhone(v any) error {
 	s, ok := v.(string)
 	if !ok || s == "" {
 		return nil
 	}
-	// Simple phone validation: digits, spaces, dashes, plus
 	for _, c := range s {
 		if !(c >= '0' && c <= '9') && c != ' ' && c != '-' && c != '+' && c != '(' && c != ')' {
 			return fmt.Errorf("must be a valid phone number")
@@ -445,7 +315,6 @@ func ValidatePhone(v any) error {
 	return nil
 }
 
-// ValidateMatch validates that two fields match.
 func ValidateMatch(field1, field2 string, values map[string]any) func(any) error {
 	return func(v any) error {
 		v1, ok1 := values[field1]
@@ -457,7 +326,6 @@ func ValidateMatch(field1, field2 string, values map[string]any) func(any) error
 	}
 }
 
-// ValidateOneOf validates that value is one of the allowed values.
 func ValidateOneOf(allowed ...string) func(any) error {
 	return func(v any) error {
 		s, ok := v.(string)
@@ -473,7 +341,6 @@ func ValidateOneOf(allowed ...string) func(any) error {
 	}
 }
 
-// ValidateCustom creates a custom validator with a message.
 func ValidateCustom(fn func(any) bool, message string) func(any) error {
 	return func(v any) error {
 		if !fn(v) {
