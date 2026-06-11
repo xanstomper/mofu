@@ -26,9 +26,9 @@
   <img src="https://img.shields.io/badge/go-1.21+-00ADD8?style=for-the-badge&logo=go&logoColor=white" alt="Go">
   <img src="https://img.shields.io/badge/license-MIT-00FF00?style=for-the-badge" alt="License">
   <img src="https://img.shields.io/badge/version-0.3.0-FF69B4?style=for-the-badge" alt="Version">
-  <img src="https://img.shields.io/badge/tests-101%20passing-brightgreen?style=for-the-badge" alt="Tests">
-  <img src="https://img.shields.io/badge/gadgets-65-blueviolet?style=for-the-badge" alt="Gadgets">
-  <img src="https://img.shields.io/badge/examples-13-orange?style=for-the-badge" alt="Examples">
+  <img src="https://img.shields.io/badge/tests-120%20passing-brightgreen?style=for-the-badge" alt="Tests">
+  <img src="https://img.shields.io/badge/gadgets-52-blueviolet?style=for-the-badge" alt="Gadgets">
+  <img src="https://img.shields.io/badge/examples-19-orange?style=for-the-badge" alt="Examples">
 </p>
 
 ---
