@@ -568,6 +568,30 @@ func shallowEqual(a, b any) bool {
 	if a == nil || b == nil {
 		return false
 	}
+	// Fast path for common types
+	switch av := a.(type) {
+	case int:
+		if bv, ok := b.(int); ok {
+			return av == bv
+		}
+	case int64:
+		if bv, ok := b.(int64); ok {
+			return av == bv
+		}
+	case float64:
+		if bv, ok := b.(float64); ok {
+			return av == bv
+		}
+	case string:
+		if bv, ok := b.(string); ok {
+			return av == bv
+		}
+	case bool:
+		if bv, ok := b.(bool); ok {
+			return av == bv
+		}
+	}
+	// Fallback: compare string representations (allocates)
 	return fmt.Sprintf("%v", a) == fmt.Sprintf("%v", b)
 }
 
