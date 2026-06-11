@@ -54,7 +54,9 @@ func (s *Signal[T]) Set(value T) {
 
 	// Notify subscribers
 	for _, sub := range subs {
-		sub(value)
+		if sub != nil {
+			sub(value)
+		}
 	}
 	_ = old // Available for diffing if needed
 }
