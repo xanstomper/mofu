@@ -149,6 +149,19 @@ type Program struct {
 
 	msgs chan Msg
 	errs chan error
+
+	altScreen              bool
+	mouseCellMotion        bool
+	mouseAllMotion         bool
+	bracketedPaste         bool
+	bracketedPasteCancel   bool
+	syncOutput             bool
+	reportFocus            bool
+	filterPaste            bool
+	middlewares            []EventMiddleware
+	eventFilter            func(Event) Event
+	statusMessageLifetime  time.Duration
+	statusBar              StatusBar
 }
 
 type cancelReader interface {

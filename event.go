@@ -40,6 +40,14 @@ type KeyEvent struct {
 	Alt, Ctrl, Shift bool
 }
 
+type PasteEvent struct {
+	Content string
+}
+
+type FocusEvent struct {
+	Focused bool
+}
+
 // Key is a keyboard key identifier.
 type Key int
 
