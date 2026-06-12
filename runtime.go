@@ -65,7 +65,7 @@ func WithSize(w, h int) Option {
 }
 
 func WithWindowSize(w, h int) Option {
-	return func(p *Program) { p.width.Store(int32(w)); p.height.Store(int32(h)) }
+	return WithSize(w, h)
 }
 
 func WithFPS(fps int) Option {
@@ -80,12 +80,12 @@ func WithInput(r io.Reader) Option {
 	return func(p *Program) { p.input = r }
 }
 
-func WithOutputWriter(w io.Writer) Option {
+func WithOutput(w io.Writer) Option {
 	return func(p *Program) { p.output = w }
 }
 
-func WithOutput(w io.Writer) Option {
-	return func(p *Program) { p.output = w }
+func WithOutputWriter(w io.Writer) Option {
+	return WithOutput(w)
 }
 
 func WithEnvironment(env []string) Option {
@@ -222,6 +222,7 @@ func New(root Node, opts ...Option) *Program {
 		kern:        k,
 		theme:       DefaultTheme(),
 		animator:    NewAnimator(),
+		eventBus:    NewEventBus(),
 		ctx:         ctx,
 		cancel:      cancel,
 		finished:    make(chan struct{}),
@@ -373,7 +374,9 @@ func (p *Program) Run() error {
 		if dims, ok := msg.Payload.([2]int); ok {
 			p.width.Store(int32(dims[0]))
 			p.height.Store(int32(dims[1]))
-			p.renderer.Resize(dims[0], dims[1])
+			if p.renderer != nil {
+				p.renderer.Resize(dims[0], dims[1])
+			}
 			p.kern.SetTerminalSize(dims[0], dims[1])
 		}
 	})

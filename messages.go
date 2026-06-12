@@ -68,13 +68,13 @@ func RequestWindowSize() Msg {
 	return WindowSizeMsg{}
 }
 
-type windowSizeMsg2 struct{}
+
 
 func RequestTerminalVersion() Msg {
 	return TerminalVersionMsg{}
 }
 
-type terminalVersionMsg struct{}
+
 
 func RequestColorProfile() Msg {
 	return ColorProfileRequestMsg{}
@@ -110,43 +110,7 @@ type printLineMsg struct {
 	Body string
 }
 
-func compactCmds2(cmds []Cmd) Cmd {
-	valid := make([]Cmd, 0, len(cmds))
-	for _, c := range cmds {
-		if c != nil {
-			valid = append(valid, c)
-		}
-	}
-	switch len(valid) {
-	case 0:
-		return nil
-	case 1:
-		return valid[0]
-	default:
-		return func() Msg {
-			return BatchMsg(valid)
-		}
-	}
-}
 
-func SequenceCmds(cmds ...Cmd) Cmd {
-	valid := make([]Cmd, 0, len(cmds))
-	for _, c := range cmds {
-		if c != nil {
-			valid = append(valid, c)
-		}
-	}
-	switch len(valid) {
-	case 0:
-		return nil
-	case 1:
-		return valid[0]
-	default:
-		return func() Msg {
-			return SequenceMsg(valid)
-		}
-	}
-}
 
 func (ke KeyEvent) Modifiers() ModifierKey {
 	var mod ModifierKey

@@ -7,7 +7,7 @@ import (
 // ---------------------------------------------------------------------------
 // Advanced Layout Engine
 // ---------------------------------------------------------------------------
-// Unlike Bubble Tea's manual layout, MOFU provides:
+// MOFU provides:
 // - Constraint-based layout (min/max width/height)
 // - Flex layouts with grow/shrink
 // - Grid layouts with columns/rows

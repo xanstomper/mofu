@@ -32,7 +32,7 @@ import (
 // =========================================================================
 // Agent Display Framework
 // AI-native TUI components for agentic workflows.
-// Superior to OpenTUI/Bubble Tea for agent output display.
+// Production-grade agent output display.
 // =========================================================================
 
 // AgentState represents the current state of an AI agent.

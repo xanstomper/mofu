@@ -8,7 +8,7 @@ import (
 )
 
 // ---------------------------------------------------------------------------
-// Data Engine — Better than Bubble Tea's manual state management
+// Data Engine — reactive state management with type-safe stores
 // ---------------------------------------------------------------------------
 // MOFU's data engine provides:
 // - Reactive signals (like SolidJS)

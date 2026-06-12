@@ -100,6 +100,7 @@ type Spinner struct {
 	running    bool
 	frame      int64
 	onUpdate   func()
+	cancel     chan struct{}
 }
 
 func NewSpinner(style SpinnerStyle) *Spinner {
@@ -131,6 +132,7 @@ func (s *Spinner) Start() {
 	s.running = true
 	s.startTime = time.Now()
 	s.ticker = time.NewTicker(80 * time.Millisecond)
+	s.cancel = make(chan struct{})
 	s.mu.Unlock()
 	go s.spin()
 }
@@ -138,6 +140,10 @@ func (s *Spinner) Start() {
 func (s *Spinner) Stop() {
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	if s.cancel != nil {
+		close(s.cancel)
+		s.cancel = nil
+	}
 	if s.ticker != nil {
 		s.ticker.Stop()
 		s.ticker = nil
@@ -166,18 +172,25 @@ func (s *Spinner) spin() {
 		}
 		ticker := s.ticker
 		paused := s.paused
+		cancel := s.cancel
+		style := s.style
 		s.mu.Unlock()
 
-		if paused {
+		if paused || ticker == nil {
 			time.Sleep(100 * time.Millisecond)
 			continue
 		}
-		if ticker == nil {
+
+		select {
+		case <-cancel:
 			return
+		case <-ticker.C:
 		}
-		<-ticker.C
+
 		s.mu.Lock()
-		s.index = (s.index + 1) % len(s.style.Frames)
+		if len(style.Frames) > 0 {
+			s.index = (s.index + 1) % len(style.Frames)
+		}
 		s.frame++
 		s.mu.Unlock()
 		if s.onUpdate != nil {

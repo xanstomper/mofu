@@ -85,7 +85,4 @@ func (sb *StatusBar) Clear() {
 	sb.mu.Unlock()
 }
 
-type WindowSizeMsg2 struct {
-	Width  int
-	Height int
-}
+

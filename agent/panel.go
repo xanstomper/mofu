@@ -10,7 +10,7 @@ import (
 )
 
 // =========================================================================
-// 4. Sleek Panel System — polished terminal UI like OpenTUI/OpenCode but better
+// 4. Sleek Panel System — polished terminal UI components
 // =========================================================================
 
 // Panel is a styled border container with title, focus management.

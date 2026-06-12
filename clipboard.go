@@ -25,7 +25,7 @@ func ReadClipboard() Cmd {
 		if err != nil {
 			return ClipboardMsg{Content: ""}
 		}
-		return ClipboardMsg{Content: string(out)}
+		return ClipboardMsg{Content: strings.TrimRight(string(out), "\r\n")}
 	}
 }
 
@@ -34,16 +34,13 @@ func WriteClipboard(text string) Cmd {
 		var cmd *exec.Cmd
 		switch runtime.GOOS {
 		case "windows":
-			cmd = exec.Command("powershell", "-command", "Set-Clipboard", "-Value", text)
+			cmd = exec.Command("powershell", "-command", "Set-Clipboard", "-InputObject", "-")
 		case "darwin":
 			cmd = exec.Command("pbcopy")
 		default:
 			cmd = exec.Command("xclip", "-selection", "clipboard")
-			cmd.Stdin = strings.NewReader(text)
 		}
-		if runtime.GOOS != "windows" {
-			cmd.Stdin = strings.NewReader(text)
-		}
+		cmd.Stdin = strings.NewReader(text)
 		cmd.Run()
 		return nil
 	}

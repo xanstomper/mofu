@@ -79,6 +79,7 @@ var (
 	ColorBrightGreen  = ANSI(10)
 	ColorBrightYellow = ANSI(11)
 	ColorBrightBlue   = ANSI(12)
+	ColorBrightMagenta = ANSI(13)
 	ColorBrightCyan   = ANSI(14)
 	ColorBrightWhite  = ANSI(15)
 )

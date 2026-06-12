@@ -9,7 +9,7 @@ import (
 // ---------------------------------------------------------------------------
 // Tree-Based Rendering Engine
 // ---------------------------------------------------------------------------
-// Unlike Bubble Tea (string-based) or OpenTUI (JS/Virtual DOM),
+// MOFU uses a scene-graph approach with reactive dirty-bit propagation,
 // MOFU maintains an actual tree of nodes with:
 // - Efficient diffing (only changed subtrees re-render)
 // - Precise event targeting (events go to specific nodes)
