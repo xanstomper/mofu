@@ -156,6 +156,22 @@ func (t *Textarea) HandleEvent(e Event) {
 				t.cursorCol = len(t.lines[t.cursorRow])
 			}
 		}
+	case KeyPgUp:
+		t.cursorRow -= t.maxHeight
+		if t.cursorRow < 0 {
+			t.cursorRow = 0
+		}
+		if t.cursorCol > len(t.lines[t.cursorRow]) {
+			t.cursorCol = len(t.lines[t.cursorRow])
+		}
+	case KeyPgDn:
+		t.cursorRow += t.maxHeight
+		if t.cursorRow >= len(t.lines) {
+			t.cursorRow = len(t.lines) - 1
+		}
+		if t.cursorCol > len(t.lines[t.cursorRow]) {
+			t.cursorCol = len(t.lines[t.cursorRow])
+		}
 	case KeyHome:
 		t.cursorCol = 0
 	case KeyEnd:

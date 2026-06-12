@@ -64,6 +64,10 @@ func WithSize(w, h int) Option {
 	return func(p *Program) { p.width.Store(int32(w)); p.height.Store(int32(h)) }
 }
 
+func WithWindowSize(w, h int) Option {
+	return func(p *Program) { p.width.Store(int32(w)); p.height.Store(int32(h)) }
+}
+
 func WithFPS(fps int) Option {
 	return func(p *Program) {
 		if fps > 0 && fps <= 120 {
@@ -78,6 +82,26 @@ func WithInput(r io.Reader) Option {
 
 func WithOutputWriter(w io.Writer) Option {
 	return func(p *Program) { p.output = w }
+}
+
+func WithOutput(w io.Writer) Option {
+	return func(p *Program) { p.output = w }
+}
+
+func WithEnvironment(env []string) Option {
+	return func(p *Program) { p.environ = env }
+}
+
+func WithContext(ctx context.Context) Option {
+	return func(p *Program) { p.externalCtx = ctx }
+}
+
+func WithoutSignals() Option {
+	return func(p *Program) { atomic.StoreUint32(&ignoreSignals, 1) }
+}
+
+func WithColorProfile(profile string) Option {
+	return func(p *Program) { p.colorProfile = profile }
 }
 
 func WithoutRenderer() Option {
@@ -130,6 +154,7 @@ type Program struct {
 	rt *Runtime
 
 	fps                  int
+	colorProfile         string
 	disableRenderer      bool
 	disableInput         bool
 	disableSignalHandler bool

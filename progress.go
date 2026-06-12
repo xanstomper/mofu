@@ -42,10 +42,14 @@ type Progress struct {
 	mu       sync.Mutex
 	total    float64
 	current  float64
+	target   float64
 	width    int
 	style    ProgressStyle
 	title    string
 	finished bool
+	smooth   bool
+	blendA   Color
+	blendB   Color
 }
 
 func NewProgress(total float64, width int) *Progress {
@@ -110,6 +114,44 @@ func (p *Progress) IsFinished() bool {
 	return p.finished
 }
 
+func (p *Progress) SetPercent(v float64) {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	p.total = 100
+	p.current = v
+	if v >= 100 {
+		p.finished = true
+	}
+}
+
+func (p *Progress) SetSmooth(v bool) {
+	p.mu.Lock()
+	p.smooth = v
+	p.mu.Unlock()
+}
+
+func (p *Progress) SetColors(a, b Color) {
+	p.mu.Lock()
+	p.blendA = a
+	p.blendB = b
+	p.mu.Unlock()
+}
+
+func (p *Progress) SmoothTick() float64 {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	if !p.smooth || p.total == 0 {
+		return p.current
+	}
+	diff := p.target - p.current
+	if diff < 0.01 {
+		p.current = p.target
+		return p.current
+	}
+	p.current += diff * 0.15
+	return p.current
+}
+
 func (p *Progress) Render() string {
 	p.mu.Lock()
 	defer p.mu.Unlock()
@@ -133,7 +175,12 @@ func (p *Progress) renderBar() string {
 		filled = p.width
 	}
 
-	bar := DefaultStyle().Fg(p.style.Filled).Apply(strings.Repeat(string(p.style.Full), filled))
+	barColor := p.style.Filled
+	if p.blendA != (Color{}) && p.blendB != (Color{}) {
+		barColor = Blend(p.blendA, p.blendB, pct/100)
+	}
+
+	bar := DefaultStyle().Fg(barColor).Apply(strings.Repeat(string(p.style.Full), filled))
 	empty := DefaultStyle().Fg(p.style.Unfilled).Apply(strings.Repeat(string(p.style.Empty), p.width-filled))
 
 	label := fmt.Sprintf(" %s%.0f%%", bar+empty, pct)

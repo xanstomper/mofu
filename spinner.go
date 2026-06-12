@@ -46,6 +46,46 @@ var (
 		Frames: []string{"·   ", "··  ", "··· ", "····", " ···", "  ··", "   ·", "    "},
 		Fg:     Hex("89b4fa"),
 	}
+	SpinnerJump = SpinnerStyle{
+		Frames: []string{"⢄", "⢂", "⢁", "⡁", "⡈", "⡐", "⡠"},
+		Fg:     Hex("a6e3a1"),
+	}
+	SpinnerMoon = SpinnerStyle{
+		Frames: []string{"🌑", "🌒", "🌓", "🌔", "🌕", "🌖", "🌗", "🌘"},
+		Fg:     Hex("f9e2af"),
+	}
+	SpinnerMeter = SpinnerStyle{
+		Frames: []string{"▱▱▱", "▰▱▱", "▰▰▱", "▰▰▰", "▰▰▱", "▰▱▱", "▱▱▱"},
+		Fg:     Hex("89b4fa"),
+	}
+	SpinnerHamburger = SpinnerStyle{
+		Frames: []string{"☱", "☲", "☴", "☲"},
+		Fg:     Hex("f5c2e7"),
+	}
+	SpinnerEllipsis = SpinnerStyle{
+		Frames: []string{"", ".", "..", "..."},
+		Fg:     Hex("cdd6f4"),
+	}
+	SpinnerToggle = SpinnerStyle{
+		Frames: []string{"●", "○"},
+		Fg:     Hex("a6e3a1"),
+	}
+	SpinnerArrow = SpinnerStyle{
+		Frames: []string{"←", "↖", "↑", "↗", "→", "↘", "↓", "↙"},
+		Fg:     Hex("89b4fa"),
+	}
+	SpinnerBox = SpinnerStyle{
+		Frames: []string{"รณ", "ฅ", "໒", "୭", "୧"},
+		Fg:     Hex("f5c2e7"),
+	}
+	SpinnerHearts = SpinnerStyle{
+		Frames: []string{"♡", "❤", "❣", "❤", "♡"},
+		Fg:     Hex("f38ba8"),
+	}
+	SpinnerChristmas = SpinnerStyle{
+		Frames: []string{"🌲", "🎄"},
+		Fg:     Hex("a6e3a1"),
+	}
 )
 
 type Spinner struct {
