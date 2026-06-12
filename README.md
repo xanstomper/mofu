@@ -3,8 +3,9 @@
 </p>
 
 <p align="center">
-  <strong>The reactive terminal runtime for Go</strong><br>
-  <em>Build beautiful, animated, streaming terminal apps with zero-allocation rendering.</em>
+  <strong>The reactive terminal UI framework & runtime for Go</strong><br>
+  <em>Build beautiful, animated, streaming terminal apps with zero-allocation rendering.</em><br>
+  <em>Complete TUI framework — not just a runtime.</em>
 </p>
 
 <p align="center">
@@ -13,7 +14,8 @@
   <a href="https://github.com/xanstomper/mofu/releases"><img src="https://img.shields.io/badge/version-1.0.0-ff69b4?style=flat-square" alt="v1.0.0"></a>
   <a href="#benchmarks"><img src="https://img.shields.io/badge/perf-0%20allocs%20hot%20path-brightgreen?style=flat-square" alt="Zero Allocs"></a>
   <img src="https://img.shields.io/badge/tests-207%2B_passing-00dd00?style=flat-square" alt="Tests">
-  <img src="https://img.shields.io/badge/gadgets-112-blueviolet?style=flat-square" alt="Gadgets">
+  <img src="https://img.shields.io/badge/framework-complete-ff69b4?style=flat-square" alt="Framework">
+  <img src="https://img.shields.io/badge/widgets-6%20core%20%2B%2018%20basic-blueviolet?style=flat-square" alt="Widgets">
   <img src="https://img.shields.io/badge/examples-24-orange?style=flat-square" alt="Examples">
   <a href="https://github.com/xanstomper/mofu"><img src="https://img.shields.io/github/stars/xanstomper/mofu?style=flat-square&color=yellow" alt="Stars"></a>
 </p>
@@ -343,6 +345,112 @@ a.RegisterTool("bash", func(input string) (string, error) {
 
 ---
 
+## Framework Components
+
+MOFU is a **complete TUI framework** — not just a runtime. Every feature you need to build production terminal apps is built in.
+
+### Program Options
+
+```go
+p := mofu.New(model,
+    mofu.WithAltScreen(),          // alternate screen buffer
+    mofu.WithMouseCellMotion(),    // SGR mouse tracking
+    mofu.WithBracketedPaste(),     // bracketed paste mode
+    mofu.WithSyncOutput(),         // CSI 2026 synchronized output (no flicker)
+    mofu.WithReportFocus(),        // focus in/out events
+    mofu.WithFPS(60),              // frame rate cap
+    mofu.WithTheme(mofu.MochiTheme()),
+    mofu.WithMiddleware(mw1, mw2), // event middleware chain
+    mofu.WithEventFilter(func(e Event) Event { return e }),
+)
+p.Run()
+```
+
+### Key Bindings
+
+Declarative key maps with contextual help display:
+
+```go
+km := mofu.NewKeyMap()
+km.Set("up", mofu.NewBinding(mofu.KeyUp, mofu.HelpText{Key: "↑", Desc: "up"}))
+km.Set("down", mofu.NewBinding(mofu.KeyDown, mofu.HelpText{Key: "↓", Desc: "down"}))
+km.Set("quit", mofu.NewBinding(mofu.KeyEsc, mofu.HelpText{Key: "esc", Desc: "quit"}))
+
+name, ok := km.Matches(event)  // returns binding name if matched
+help := km.Help()               // formatted help text
+short := km.ShortHelp()         // first 3 bindings
+full := km.FullHelp()           // all bindings grouped
+```
+
+### Middleware
+
+Composable event filter chain:
+
+```go
+func myMiddleware(next mofu.EventFilter) mofu.EventFilter {
+    return func(ev mofu.Event) mofu.Event {
+        // pre-process event
+        ev = next(ev)
+        // post-process event
+        return ev
+    }
+}
+
+chain := mofu.Chain(mw1, mw2, mw3)
+```
+
+Built-in middleware: `ColorProfileMiddleware`, `FPSMiddleware`, `PasteFilterMiddleware`, `FocusMiddleware`.
+
+### Core Widgets (6)
+
+Production-grade widgets built into the framework:
+
+| Widget | Description |
+|--------|-------------|
+| `Spinner` | 8 styles (Dot, Line, Dot2, Minidot, Pulse, Globe, Monkey, Points), start/stop/pause |
+| `Progress` | 4 modes (Bar, Dots, Spinner, Percent), Incr/Set, percentage tracking |
+| `Viewport` | Scrollable content with keyboard nav, GotoTop/Bottom, HalfPage, scroll percentage |
+| `Textarea` | Multi-line text input with cursor, insert/delete, line navigation |
+| `List` | Filterable list with delegate pattern, selection, pagination |
+| `Table` | Sortable table with columns, alignment, header styling, selection |
+
+```go
+// Spinner
+spinner := mofu.NewSpinner(mofu.SpinnerDot)
+spinner.Title("Loading...")
+spinner.Start()
+
+// Progress
+bar := mofu.NewProgress(100, 40)
+bar.Set(75)      // or bar.Incr(10)
+fmt.Println(bar.Render())  // ████████████████████░░░░░░░░ 75%
+
+// Viewport
+vp := mofu.NewViewport(80, 20)
+vp.SetContent(longString)
+vp.ScrollDown(5)
+
+// Textarea
+ta := mofu.NewTextarea()
+ta.SetPlaceholder("Type here...")
+ta.Focus()
+
+// List
+items := []mofu.ListItem{myItem1, myItem2}
+l := mofu.NewList(items)
+l.SetSize(40, 10)
+l.OnSelect(func(i int, item mofu.ListItem) { /* selected */ })
+
+// Table
+cols := []mofu.TableColumn{{Title: "Name", Width: 20}, {Title: "Age", Width: 10}}
+rows := [][]string{{"Alice", "30"}, {"Bob", "25"}}
+t := mofu.NewTable(cols, rows)
+t.SetSize(80, 20)
+t.SortBy(1, true)  // sort by age ascending
+```
+
+---
+
 ## Style API
 
 Fluent builder pattern for composable styles:
@@ -394,15 +502,21 @@ stagger := mofu.Stagger(spec, 50*time.Millisecond, fromTos)
 
 | | MOFU | Elm-style (Bubble Tea) | Immediate-mode |
 |--|------|----------------------|----------------|
+| **Type** | Full TUI framework + runtime | Runtime only | Runtime only |
 | **Render model** | Cell-level differential | Full string rebuild | Full buffer copy |
 | **Allocs/frame** | 0 (hot path) | N (string concat) | N (Vec growth) |
 | **State** | Reactive graph + dirty bits | Manual Msg returning | Global mutable |
 | **Input latency** | <1ms (1ms batch) | Per-keystroke | Per-keystroke |
 | **Layout** | Flexbox with cache | Manual positioning | Immediate |
 | **Streaming** | Built-in SSE + ring buffer | Manual | None |
-| **Animation** | Built-in tweens + springs | Manual | Manual |
+| **Animation** | Built-in tweens + springs + 16 easings | Manual | Manual |
+| **Key bindings** | Declarative KeyMap + help | Manual | Manual |
+| **Middleware** | EventMiddleware chain | None | None |
+| **Program options** | AltScreen, mouse, paste, sync, focus | Basic | Basic |
+| **Built-in widgets** | Spinner, Progress, Viewport, Textarea, List, Table | None (separate pkg) | None |
 | **AI agent display** | Native `agent/` package | None | None |
 | **Virtual scroll** | O(1) for millions of lines | None | Optional |
+| **Themes** | 3 built-in + semantic tokens | Manual | Manual |
 
 ---
 
