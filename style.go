@@ -33,6 +33,10 @@ var (
 		Top: '═', Bottom: '═', Left: '║', Right: '║',
 		TopLeft: '╔', TopRight: '╗', BottomLeft: '╚', BottomRight: '╝',
 	}
+	BorderDot = BorderStyle{
+		Top: '·', Bottom: '·', Left: '⋮', Right: '⋮',
+		TopLeft: '·', TopRight: '·', BottomLeft: '·', BottomRight: '·',
+	}
 )
 
 // Spacing defines padding or margin on all four sides.

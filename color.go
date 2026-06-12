@@ -90,3 +90,27 @@ var (
 	ColorWhiteTrue   = RGB(255, 255, 255)
 	ColorGray        = RGB(128, 128, 128)
 )
+
+func Blend(a, b Color, ratio float64) Color {
+	if ratio < 0 {
+		ratio = 0
+	}
+	if ratio > 1 {
+		ratio = 1
+	}
+	return Color{
+		R: uint8(float64(a.R) + (float64(b.R)-float64(a.R))*ratio),
+		G: uint8(float64(a.G) + (float64(b.G)-float64(a.G))*ratio),
+		B: uint8(float64(a.B) + (float64(b.B)-float64(a.B))*ratio),
+	}
+}
+
+func Lerp(a, b Color, t float64) Color { return Blend(a, b, t) }
+
+func (c Color) Lighten(amount float64) Color { return Blend(c, ColorWhiteTrue, amount) }
+func (c Color) Darken(amount float64) Color  { return Blend(c, ColorBlackTrue, amount) }
+
+func (c Color) Saturate(amount float64) Color {
+	gray := uint8(float64(c.R)*0.299 + float64(c.G)*0.587 + float64(c.B)*0.114)
+	return Blend(Color{R: gray, G: gray, B: gray}, c, 1+amount)
+}

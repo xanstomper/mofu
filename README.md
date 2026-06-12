@@ -1,16 +1,21 @@
-<h1 align="center">MOFU</h1>
-
 <p align="center">
-  <strong>The Reactive Terminal Application Runtime</strong>
+  <img src="banner.png" alt="MOFU — ターミナルの、その先へ。" width="100%">
 </p>
 
 <p align="center">
-  <img src="https://img.shields.io/badge/go-1.21+-00ADD8?style=flat-square&logo=go&logoColor=white" alt="Go">
-  <img src="https://img.shields.io/badge/license-MIT-00FF00?style=flat-square" alt="License">
-  <img src="https://img.shields.io/badge/version-0.5.0-FF69B4?style=flat-square" alt="Version">
-  <img src="https://img.shields.io/badge/tests-207%20passing-brightgreen?style=flat-square" alt="Tests">
+  <strong>The reactive terminal runtime for Go</strong><br>
+  <em>Build beautiful, animated, streaming terminal apps with zero-allocation rendering.</em>
+</p>
+
+<p align="center">
+  <a href="https://pkg.go.dev/github.com/xanstomper/mofu"><img src="https://img.shields.io/badge/pkg.go.dev-reference-007d9c?style=flat-square&logo=go&logoColor=white" alt="pkg.go.dev"></a>
+  <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-00ff00?style=flat-square" alt="MIT License"></a>
+  <a href="https://github.com/xanstomper/mofu/releases"><img src="https://img.shields.io/badge/version-1.0.0-ff69b4?style=flat-square" alt="v1.0.0"></a>
+  <a href="#benchmarks"><img src="https://img.shields.io/badge/perf-0%20allocs%20hot%20path-brightgreen?style=flat-square" alt="Zero Allocs"></a>
+  <img src="https://img.shields.io/badge/tests-207%2B_passing-00dd00?style=flat-square" alt="Tests">
   <img src="https://img.shields.io/badge/gadgets-112-blueviolet?style=flat-square" alt="Gadgets">
-  <img src="https://img.shields.io/badge/examples-25-orange?style=flat-square" alt="Examples">
+  <img src="https://img.shields.io/badge/examples-24-orange?style=flat-square" alt="Examples">
+  <a href="https://github.com/xanstomper/mofu"><img src="https://img.shields.io/github/stars/xanstomper/mofu?style=flat-square&color=yellow" alt="Stars"></a>
 </p>
 
 ---
@@ -18,7 +23,7 @@
 ## Quick Start
 
 ```bash
-go get github.com/xanstomper/mofu
+go get github.com/xanstomper/mofu@latest
 ```
 
 ```go
@@ -29,212 +34,294 @@ import (
     "github.com/xanstomper/mofu"
 )
 
-func main() {
-    mofu.Run(&counter{})
-}
-
 type counter struct {
     mofu.Minimal
-    n int
+    count int
 }
 
 func (c *counter) Render(ctx *mofu.RenderContext) {
     ctx.Renderer.WriteString(
-        fmt.Sprintf("Count: %d  (↑/↓ to change, q to quit)", c.n),
-        0, 0, mofu.Hex("cdd6f4"), mofu.ColorBlack, 0,
+        fmt.Sprintf("  Count: %d   (↑/↓ change · q quit)  ", c.count),
+        0, 0, mofu.Hex("cdd6f4"), mofu.Hex("1e1e2e"), 0,
     )
 }
 
 func (c *counter) HandleEvent(e mofu.Event) mofu.Cmd {
     if e.Type != mofu.EventKeyPress { return nil }
-    ke := e.Data.(mofu.KeyEvent)
-    switch {
-    case ke.Key == mofu.KeyUp: c.n++
-    case ke.Key == mofu.KeyDown: c.n--
-    case ke.Key == mofu.KeyEsc: return mofu.QuitCmd()
+    switch ke := e.Data.(mofu.KeyEvent); ke.Key {
+    case mofu.KeyUp:   c.count++
+    case mofu.KeyDown: c.count--
+    case mofu.KeyEsc:  return mofu.QuitCmd()
     }
     return nil
 }
+
+func main() { mofu.Run(&counter{}) }
 ```
 
-```bash
-go run main.go
+```
+$ go run main.go
+  Count: 42   (↑/↓ change · q quit)
 ```
 
-## Examples (25)
-
-| App | Run | Description |
-|-----|-----|-------------|
-| **counter** | `cd examples/counter && go run .` | Minimal counter — starter template |
-| **dashboard** | `cd examples/dashboard && go run .` | Multi-panel system dashboard |
-| **chat** | `cd examples/chat && go run .` | Chat interface with messages |
-| **email** | `cd examples/email && go run .` | Email client with folders, preview |
-| **filemanager** | `cd examples/filemanager && go run .` | Directory browser with tree navigation |
-| **form** | `cd examples/form && go run .` | Registration form with validation |
-| **settings** | `cd examples/settings && go run .` | Settings panel with toggles |
-| **logviewer** | `cd examples/logviewer && go run .` | Log filtering and search |
-| **logmonitor** | `cd examples/logmonitor && go run .` | Real-time log file watcher |
-| **wizard** | `cd examples/wizard && go run .` | Setup wizard with steps |
-| **monitor** | `cd examples/monitor && go run .` | System metrics with sparklines |
-| **gitui** | `cd examples/gitui && go run .` | Git interface (branches, diff) |
-| **dockerui** | `cd examples/dockerui && go run .` | Docker container dashboard |
-| **kanban** | `cd examples/kanban && go run .` | Kanban board |
-| **calculator** | `cd examples/calculator && go run .` | Calculator with input |
-| **taskmanager** | `cd examples/taskmanager && go run .` | Task CRUD with filter/sort |
-| **markdown** | `cd examples/markdown && go run .` | Markdown viewer with scroll |
-| **csvviewer** | `cd examples/csvviewer && go run .` | CSV browser with sort/filter |
-| **stocktracker** | `cd examples/stocktracker && go run .` | Stock tracker with sparklines |
-| **musicplayer** | `cd examples/musicplayer && go run .` | Music player with playlists |
-| **notepad** | `cd examples/notepad && go run .` | Multi-tab text editor |
-| **pomodoro** | `cd examples/pomodoro && go run .` | Pomodoro timer with sessions |
-| **budget** | `cd examples/budget && go run .` | Budget tracker with categories |
-| **aiworkflow** | `cd examples/aiworkflow && go run .` | AI agent workflow display |
+---
 
 ## Why MOFU?
 
-MOFU is not another TUI framework. It's a **reactive terminal runtime** built for AI agents and streaming data.
+MOFU is not another TUI framework. It is a **reactive terminal runtime** — a cell-level diff renderer backed by a dirty-bit state graph, purpose-built for AI agents, streaming data, and apps that need to feel alive.
 
-### vs Bubble Tea / Ratatui / OpenTUI
-
-| Feature | MOFU | Bubble Tea | Ratatui | OpenTUI |
-|---------|------|------------|---------|---------|
-| Architecture | Reactive graph + diff | Elm loop + full rebuild | Immediate mode | React-like |
-| Render model | Cell-level differential | Full string rebuild | Full buffer copy | Virtual DOM |
-| Allocations/frame | 0 (hot path) | N (string concat) | N (Vec growth) | N |
-| Input latency | <1ms (batched) | Per-keystroke | Per-keystroke | Per-keystroke |
-| Streaming | Built-in SSE + ring buffer | Manual | None | Manual |
-| AI agent display | Native (`agent/`) | None | None | Basic |
-| Gadgets | 112 production-ready | 0 (manual) | 0 (manual) | 0 |
-| Virtual scroll | O(1) for millions of lines | None | Optional | None |
-| Multi-agent | Tab orchestration | None | None | None |
-| API streaming | OpenAI/Anthropic/Ollama | None | None | None |
-| Cost tracking | Built-in token/cost | None | None | None |
-| Markdown | Terminal-native renderer | None | None | None |
-
-### Performance
+### Architecture
 
 ```
-RingBuffer write 1KB:    90ns   0 allocs
-RingBuffer read 1KB:    126ns   0 allocs
-VirtualScroll scroll:    70ns   0 allocs
-VirtualScroll append:   349ns   0 allocs
-StreamingBuffer:        123ns   0 allocs
-SSEParser (1 event):   3.3µs   4 allocs
-DiffRenderer:           cell-level differential — only changed cells written to terminal
+┌───────────────────────────────────────────────────────────────┐
+│                        MOFU Runtime                           │
+│                                                               │
+│  ┌─────────────┐  ┌──────────────┐  ┌────────────────────┐   │
+│  │   Kernel     │  │  State Graph │  │   Diff Renderer    │   │
+│  │  input →     │──│  dirty-bit   │──│   cell-level        │   │
+│  │  state →     │  │  DAG prop.   │  │   SGR cache         │   │
+│  │  render      │  │              │  │   zero-alloc flush  │   │
+│  └─────────────┘  └──────────────┘  └────────────────────┘   │
+│                                                               │
+│  ┌─────────────┐  ┌──────────────┐  ┌────────────────────┐   │
+│  │  Animator    │  │  Event Bus   │  │  Layout Engine      │   │
+│  │  tweens      │──│  1ms batch   │──│  flex + cache       │   │
+│  │  springs     │  │  Ctrl+key    │  │  dirty-wash         │   │
+│  │  groups      │  │  mouse SGR   │  │                     │   │
+│  └─────────────┘  └──────────────┘  └────────────────────┘   │
+└───────────────────────────────────────────────────────────────┘
+         │               │                    │
+         ▼               ▼                    ▼
+┌───────────────────────────────────────────────────────────────┐
+│                     Package Ecosystem                         │
+│                                                               │
+│  gadgets/   112 production-ready UI components                │
+│  widgets/   18 focused UI primitives                          │
+│  agent/     AI workflow display framework                     │
+│  cuddles/   Semantic themes (Mochi · Sakura · Catppuccin)     │
+│  meow/      Schema-driven forms with validators               │
+│  render/    Cell-level diff renderer, scene buffer             │
+│  state/     Reactive state graph with DAG propagation         │
+│  kernel/    Event loop, input parsing, scheduling             │
+│  message/   Type-safe pub/sub message bus                     │
+│  effect/    Async effect dispatch for plugins & IO             │
+│  ascii/     ASCII art scene rendering                         │
+└───────────────────────────────────────────────────────────────┘
 ```
 
-## Architecture
+---
+
+## Features
+
+| | Feature | Details |
+|--|---------|---------|
+| **Rendering** | Cell-level diff | Only changed cells written to terminal — not full redraws |
+| | Zero allocations | Hot path allocates nothing — preallocated framebuffers + SGR cache |
+| | TrueColor | Full 24-bit RGB with ANSI 256 fallback |
+| | Synchronized output | CSI 2026 sync — no flicker on supported terminals |
+| **Animation** | 16 easing functions | Quad, cubic, bounce, elastic, back, expo, quint |
+| | Spring physics | Damped springs with stiffness/damping/mass |
+| | Animation groups | Parallel + sequence + stagger composition |
+| | Enter/exit transitions | Declarative widget lifecycle animations |
+| **Input** | Custom parser | No VT500 dependency — handles CSI, SS3, mouse SGR, bracketed paste |
+| | 1ms batch window | Coalesces rapid keystrokes — fewer renders, same latency |
+| | Full key coverage | Arrows, F1-F12, Ctrl+A-Z, Alt+key, mouse drag, scroll |
+| **State** | Reactive graph | Dirty-bit DAG propagation — no full recomputation |
+| | Computed values | Derived state that auto-updates when dependencies change |
+| | Stream-first | All inputs are streams — no global Update() loop |
+| **Layout** | Flexbox model | Row, column, flex-grow, flex-shrink, alignment, gaps |
+| | Layout cache | Skips layout when width/height/stateHash unchanged |
+| | Auto-sizing | Min/max constraints with overflow control |
+| **Theming** | 3 built-in themes | Catppuccin Mocha · Mochi · Sakura |
+| | Semantic tokens | Primary, secondary, accent, success, warning, error, info, muted |
+| | Widget themes | Per-widget normal/hover/pressed/disabled/focused states |
+
+---
+
+## Performance
 
 ```
-┌─────────────────────────────────────────────────┐
-│                  MOFU Runtime                    │
-│  ┌──────────┐  ┌──────────┐  ┌──────────────┐  │
-│  │  Kernel   │  │  State   │  │    Render     │  │
-│  │ (input→   │  │  Graph   │  │  (diff+flush) │  │
-│  │  state→   │  │ (dirty   │  │  cell-level   │  │
-│  │  render)  │  │  DAG)    │  │  differential │  │
-│  └──────────┘  └──────────┘  └──────────────┘  │
-├─────────────────────────────────────────────────┤
-│              Package Ecosystem                   │
-│  gadgets/   → 112 UI components                  │
-│  widgets/   → 18 basic UI primitives             │
-│  agent/     → AI workflow display                │
-│  cuddles/   → Semantic themes                    │
-│  meow/      → Schema-driven forms                │
-│  render/    → Diff renderer, scene buffer        │
-│  state/     → Reactive state graph               │
-│  kernel/    → Event loop, input parsing          │
-└─────────────────────────────────────────────────┘
+BenchmarkRingBufferWrite1K      90 ns/op    0 B/op    0 allocs
+BenchmarkRingBufferRead1K      126 ns/op    0 B/op    0 allocs
+BenchmarkVirtualScrollScroll    70 ns/op    0 B/op    0 allocs
+BenchmarkVirtualScrollAppend   349 ns/op    0 B/op    0 allocs
+BenchmarkStreamingBuffer       123 ns/op    0 B/op    0 allocs
+BenchmarkSSEParser               3 µs/op    4 B/op    4 allocs
 ```
 
-## Packages
+Run benchmarks yourself:
 
-| Package | Description |
-|---------|-------------|
-| `mofu` | Core runtime — kernel, state graph, renderer, input, events, layout |
-| `agent` | AI agent display — API streaming, tool calls, virtual scroll, SSE parser, multi-agent orchestration |
-| `gadgets` | 112 production-ready UI components — tables, charts, forms, monitors, dev tools |
-| `widgets` | 18 basic UI primitives — Input, Button, List, Table, Select, Checkbox, Modal, Tabs, Toast, Tooltip, Tree, Viewport |
-| `cuddles` | Semantic themes — Mochi, Catppuccin, Tokyo Night with dark/light variants |
-| `meow` | Schema-driven forms with validators and computed fields |
-| `kernel` | Event loop, input parsing (CSI, SS3, mouse SGR, Ctrl+key) |
-| `state` | Reactive state graph with dirty-bit DAG propagation |
-| `render` | Diff renderer with preallocated framebuffer and SGR cache |
-| `message` | Type-safe message bus with pub/sub |
-| `effect` | Async effect system for plugin/IO dispatch |
-| `ascii` | ASCII art scene rendering |
+```bash
+go test -bench=. -benchmem ./render/... ./state/... ./message/... ./kernel/...
+```
+
+---
+
+## Themes
+
+```
+┌─────────────────────────────────────────────────────────────┐
+│  Catppuccin Mocha (default)                                 │
+│  ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━  │
+│  bg: #1e1e2e  surface: #313244  text: #cdd6f4               │
+│  primary: #89b4fa  accent: #f5c2e7  success: #a6e3a1        │
+│  error: #f38ba8  warning: #f9e2af  info: #7dcfff             │
+├─────────────────────────────────────────────────────────────┤
+│  Mochi                                                       │
+│  ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━  │
+│  bg: #0a0a0a  surface: #1a1a2e  text: #e0e0e0               │
+│  primary: #ff69b4  accent: #ff1493  success: #00ff88         │
+│  error: #ff3355  warning: #ffaa00  info: #3399ff             │
+├─────────────────────────────────────────────────────────────┤
+│  Sakura                                                      │
+│  ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━  │
+│  bg: #1a1020  surface: #2a1a30  text: #f0d0e0               │
+│  primary: #ffb7d5  accent: #ff69b4  success: #a0f0c0         │
+│  error: #ff6080  warning: #ffd080  info: #a0d0ff             │
+└─────────────────────────────────────────────────────────────┘
+```
+
+---
+
+## Examples (24)
+
+| App | Description |
+|-----|-------------|
+| **counter** | Minimal counter — starter template |
+| **dashboard** | Multi-panel system dashboard |
+| **chat** | Chat interface with messages |
+| **email** | Email client with folders and preview |
+| **filemanager** | Directory browser with tree navigation |
+| **form** | Registration form with validation |
+| **settings** | Settings panel with toggles |
+| **logviewer** | Log filtering and search |
+| **logmonitor** | Real-time log file watcher |
+| **wizard** | Setup wizard with steps |
+| **monitor** | System metrics with sparklines |
+| **gitui** | Git interface (branches, diff) |
+| **dockerui** | Docker container dashboard |
+| **kanban** | Kanban board |
+| **taskmanager** | Task CRUD with filter/sort |
+| **markdown** | Markdown viewer with scroll |
+| **csvviewer** | CSV browser with sort/filter |
+| **stocktracker** | Stock tracker with sparklines |
+| **musicplayer** | Music player with playlists |
+| **notepad** | Multi-tab text editor |
+| **pomodoro** | Pomodoro timer with sessions |
+| **budget** | Budget tracker with categories |
+| **aiworkflow** | AI agent workflow display |
+| **notepad** | Multi-tab text editor |
+
+Run any example:
+
+```bash
+cd examples/dashboard && go run .
+```
+
+---
 
 ## Gadgets (112)
 
-All gadgets have real functionality — mutex-protected state, data manipulation, event handling, styled rendering.
+All gadgets are **real product-building tools** — mutex-protected state, data manipulation methods, event handling, and styled rendering. No thin wrappers.
 
-**Data & Visualization (16)**
-HeatMap, Sparkline, ProgressBar, Donut, Gauge, Timer, PieChart, MiniMap, BoxPlot, RadarChart, WaterfallChart, FunnelChart, TreemapChart, HeatCalendar, DotPlot, Candlestick
+### Data & Visualization
 
-**Dev Tools (14)**
-APIClient, ProcessViewer, PortScanner, GitBranches, GitLog, FileExplorer, DiffViewer, HexViewer, CodeBlock, EnvConfig, CronScheduler, AICodeReview, DependencyGraph, JSONViewer
+```
+  HeatMap          Sparkline        ProgressBar      Donut
+  Gauge            Timer            PieChart         MiniMap
+  BoxPlot          RadarChart       WaterfallChart   FunnelChart
+  TreemapChart     HeatCalendar     DotPlot          Candlestick
+```
 
-**System (10)**
-SystemMonitor, DiskUsage, NetworkStats, ServiceHealth, IncidentTracker, DeploymentTracker, AuditLog, LogAggregator, ResourceMonitor, AlertBanner
+### Dev Tools
 
-**Interactive (9)**
-CRUDTable, SearchBox, DropDown, QueryBuilder, FormField, FeatureFlags, ToolPanel, PipelineRunner, DBSchema
+```
+  APIClient        ProcessViewer    PortScanner      GitBranches
+  GitLog           FileExplorer     DiffViewer       HexViewer
+  CodeBlock        EnvConfig        CronScheduler    AICodeReview
+  DependencyGraph  JSONViewer
+```
 
-**Display (15)**
-MarkdownPreview, SyntaxHighlighter, StatusPage, KeyValueEditor, LogFilter, Accordion, Tabs, Breadcrumb, Badge, Toast, NotificationPanel, WordCounter, TextTransform, ProgressBarSteps, ProgressBarAnimated
+### System & Monitoring
 
-**AI/Agent (10)**
-DiffViewerPro, JSONViewer, StatusPage, MarkdownPreview, AICodeReview, DependencyGraph, MetricGauge, FileWatcher, StreamDisplay, AgentDashboard
+```
+  SystemMonitor    DiskUsage        NetworkStats     ServiceHealth
+  IncidentTracker  DeploymentTracker  AuditLog       LogAggregator
+  ResourceMonitor  AlertBanner
+```
 
-**Terminal Tools (10)**
-TerminalOutput, ProgressBarDual, TimelineCompact, KeyValueEditor, LogFilter, AsciiTable, DonutChart, GitLog, SSHSession, NetworkPing
+### Interactive
 
-**Text & Input (6)**
-WordCounter, TextTransform, GrepViewer, CRUDTable, ProgressBarSteps, ProgressBarAnimated
+```
+  CRUDTable        SearchBox        DropDown         QueryBuilder
+  FormField        FeatureFlags     ToolPanel        PipelineRunner
+  DBSchema
+```
+
+### Display & Text
+
+```
+  MarkdownPreview  SyntaxHighlighter  StatusPage      KeyValueEditor
+  LogFilter        Accordion          Tabs            Breadcrumb
+  Badge            Toast              NotificationPanel  WordCounter
+  TextTransform    ProgressBarSteps   ProgressBarAnimated
+```
+
+### AI & Agent
+
+```
+  DiffViewerPro    JSONViewer        StatusPage       MarkdownPreview
+  AICodeReview     DependencyGraph   MetricGauge      FileWatcher
+  StreamDisplay    AgentDashboard
+```
+
+### Terminal Tools
+
+```
+  TerminalOutput   ProgressBarDual   TimelineCompact  KeyValueEditor
+  LogFilter        AsciiTable        DonutChart       GitLog
+  SSHSession       NetworkPing
+```
+
+---
 
 ## Agent Package
 
 Built for AI agent workflows — streaming, tool calls, cost tracking, multi-agent orchestration.
 
 ```go
-// Create an agent connected to any OpenAI-compatible API
 a := agent.NewInstantAgent("my-agent", apiURL, apiKey, model)
 a.SetSystemPrompt("You are a helpful assistant.")
 
-// Stream responses token-by-token
 a.OnToken(func(token string) {
-    // Render instantly to terminal
+    // renders instantly to terminal
 })
 
-// Send messages
 a.Send("Explain this code")
 
-// Use tools
 a.RegisterTool("bash", func(input string) (string, error) {
     return exec.Command("bash", "-c", input).Output()
 })
 ```
 
-**Components:**
-
 | Component | Purpose |
 |-----------|---------|
-| `Agent` | Core agent state machine with tool calls, streaming, thinking |
+| `Agent` | Core state machine with tool calls, streaming, thinking |
 | `InstantAgent` | Production agent with live API streaming |
-| `APIStream` | HTTP client for OpenAI/Anthropic/Ollama SSE endpoints |
+| `APIStream` | HTTP client for OpenAI/Anthropic/Ollama SSE |
 | `ToolPanel` | Side panel showing active/completed tool calls |
-| `CostBar` | Token usage and cost tracking bar |
-| `VirtualScroll` | O(1) scroll through millions of log lines |
-| `MarkdownRenderer` | Terminal-native markdown (headers, code blocks, lists) |
+| `CostBar` | Token usage and cost tracking |
+| `VirtualScroll` | O(1) scroll through millions of lines |
+| `MarkdownRenderer` | Terminal-native markdown rendering |
 | `Orchestrator` | Multi-agent tab display |
 | `EventTimeline` | Chronological event log with filtering |
 | `AgentDashboard` | Full-screen monitoring dashboard |
 | `WorkflowView` | Complete multi-panel layout |
 | `StreamDisplay` | Instant terminal rendering of streamed tokens |
 
-## Widgets (18)
+---
 
-Simple, focused UI primitives for building interactive TUIs:
+## Widgets (18)
 
 | Widget | Description |
 |--------|-------------|
@@ -254,6 +341,100 @@ Simple, focused UI primitives for building interactive TUIs:
 | `ProgressBar` | Progress indicator |
 | `Menu` | Menu with items |
 
+---
+
+## Style API
+
+Fluent builder pattern for composable styles:
+
+```go
+style := mofu.DefaultStyle().
+    Fg(mofu.Hex("cdd6f4")).
+    Bg(mofu.Hex("1e1e2e")).
+    Bold().
+    WithRoundedBorder().
+    PaddingHorizontal(2).
+    MarginVertical(1).
+    AlignCenter()
+```
+
+### Color utilities
+
+```go
+pink := mofu.Hex("ff69b4")
+light := pink.Lighten(0.3)      // blend toward white
+dark := pink.Darken(0.2)         // blend toward black
+mixed := mofu.Blend(a, b, 0.5)  // 50/50 mix
+lerped := mofu.Lerp(a, b, t)    // parametric interpolation
+saturated := pink.Saturate(0.5) // boost saturation
+```
+
+### Animation API
+
+```go
+anim := mofu.NewAnimation(
+    mofu.QuickSpec(300*time.Millisecond, mofu.EaseOutBack),
+    0, 100,
+)
+anim.OnChange(func(v float64) {
+    // v goes from 0 → 100 with overshoot easing
+})
+
+spring := mofu.NewSpring(0)
+spring.SetTarget(100)
+// spring physics auto-advance each tick
+
+group := mofu.Parallel(anim1, anim2, anim3)
+stagger := mofu.Stagger(spec, 50*time.Millisecond, fromTos)
+```
+
+---
+
+## Architecture Comparison
+
+| | MOFU | Elm-style (Bubble Tea) | Immediate-mode |
+|--|------|----------------------|----------------|
+| **Render model** | Cell-level differential | Full string rebuild | Full buffer copy |
+| **Allocs/frame** | 0 (hot path) | N (string concat) | N (Vec growth) |
+| **State** | Reactive graph + dirty bits | Manual Msg returning | Global mutable |
+| **Input latency** | <1ms (1ms batch) | Per-keystroke | Per-keystroke |
+| **Layout** | Flexbox with cache | Manual positioning | Immediate |
+| **Streaming** | Built-in SSE + ring buffer | Manual | None |
+| **Animation** | Built-in tweens + springs | Manual | Manual |
+| **AI agent display** | Native `agent/` package | None | None |
+| **Virtual scroll** | O(1) for millions of lines | None | Optional |
+
+---
+
+## Packages
+
+| Package | Import | Description |
+|---------|--------|-------------|
+| `mofu` | `github.com/xanstomper/mofu` | Core runtime — kernel, state graph, renderer, input, events, layout, themes |
+| `agent` | `github.com/xanstomper/mofu/agent` | AI agent display — API streaming, tool calls, virtual scroll, orchestration |
+| `gadgets` | `github.com/xanstomper/mofu/gadgets` | 112 production-ready UI components |
+| `widgets` | `github.com/xanstomper/mofu/widgets` | 18 focused UI primitives |
+| `cuddles` | `github.com/xanstomper/mofu/cuddles` | Semantic themes — Mochi, Sakura, Catppuccin |
+| `meow` | `github.com/xanstomper/mofu/meow` | Schema-driven forms with validators and computed fields |
+| `kernel` | `github.com/xanstomper/mofu/kernel` | Event loop, input parsing, scheduling |
+| `state` | `github.com/xanstomper/mofu/state` | Reactive state graph with dirty-bit DAG propagation |
+| `render` | `github.com/xanstomper/mofu/render` | Diff renderer with preallocated framebuffer and SGR cache |
+| `message` | `github.com/xanstomper/mofu/message` | Type-safe pub/sub message bus |
+| `effect` | `github.com/xanstomper/mofu/effect` | Async effect dispatch for plugins and IO |
+| `ascii` | `github.com/xanstomper/mofu/ascii` | ASCII art scene rendering |
+
+---
+
+## Tutorials
+
+| Tutorial | Description |
+|----------|-------------|
+| [Log Monitor](tutorials/01-log-monitor.md) | Build a real-time log monitor from scratch |
+| [AI Agent Display](tutorials/02-ai-agent-display.md) | Connect to an API and stream responses |
+| [Data Dashboard](tutorials/03-data-dashboard.md) | Compose gadgets into a live dashboard |
+
+---
+
 ## Documentation
 
 | Guide | Description |
@@ -265,16 +446,9 @@ Simple, focused UI primitives for building interactive TUIs:
 | [Forms](docs/guides/forms.md) | Building forms with Meow |
 | [Testing](docs/guides/testing.md) | Testing MOFU applications |
 | [Performance](docs/guides/performance.md) | Optimization guide |
-| [Migration](docs/guides/migration-from-bubbletea.md) | Migrating from Bubble Tea |
 
-## Tutorials
+---
 
-| Tutorial | Source |
-|----------|--------|
-| [Log Monitor](tutorials/01-log-monitor.md) | Build a real-time log monitor from scratch |
-| [AI Agent Display](tutorials/02-ai-agent-display.md) | Connect to an API and stream responses |
-| [Data Dashboard](tutorials/03-data-dashboard.md) | Compose gadgets into a live dashboard |
-
-## License
-
-MIT
+<p align="center">
+  <sub>Built with care by <a href="https://github.com/xanstomper">xanstomper</a> · MIT License</sub>
+</p>

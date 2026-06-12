@@ -292,3 +292,77 @@ func (s Style) MarginAll(v int) Style {
 	s.Margin = Spacing{Top: v, Right: v, Bottom: v, Left: v}
 	return s
 }
+
+func (s Style) Bold() Style              { return s.WithAttrs(AttrBold) }
+func (s Style) Italic() Style            { return s.WithAttrs(AttrItalic) }
+func (s Style) Underline() Style         { return s.WithAttrs(AttrUnderline) }
+func (s Style) Dim() Style               { return s.WithAttrs(AttrDim) }
+func (s Style) Strikethrough() Style     { return s.WithAttrs(AttrStrikethrough) }
+func (s Style) Reverse() Style           { return s.WithAttrs(AttrReverse) }
+func (s Style) SetWidth(w int) Style     { s.Width = w; return s }
+func (s Style) SetHeight(h int) Style    { s.Height = h; return s }
+func (s Style) AlignLeft() Style         { s.Align = AlignLeft; return s }
+func (s Style) AlignCenter() Style       { s.Align = AlignCenter; return s }
+func (s Style) AlignRight() Style        { s.Align = AlignRight; return s }
+func (s Style) PaddingHorizontal(v int) Style { s.Padding.Left = v; s.Padding.Right = v; return s }
+func (s Style) PaddingVertical(v int) Style   { s.Padding.Top = v; s.Padding.Bottom = v; return s }
+func (s Style) MarginHorizontal(v int) Style  { s.Margin.Left = v; s.Margin.Right = v; return s }
+func (s Style) MarginVertical(v int) Style    { s.Margin.Top = v; s.Margin.Bottom = v; return s }
+func (s Style) WithRoundedBorder() Style  { s.Border = BorderRounded; return s }
+func (s Style) WithNormalBorder() Style   { s.Border = BorderNormal; return s }
+func (s Style) WithThickBorder() Style    { s.Border = BorderThick; return s }
+func (s Style) WithDoubleBorder() Style   { s.Border = BorderDouble; return s }
+func (s Style) WithNoBorder() Style       { s.Border = BorderNone; return s }
+
+func SakuraTheme() *Theme {
+	t := DefaultTheme()
+	t.Name = "sakura"
+	t.Colors = ThemeColors{
+		Background: Hex("1a1020"),
+		Surface:    Hex("2a1a30"),
+		Text:       Hex("f0d0e0"),
+		TextDim:    Hex("7a6080"),
+		Primary:    Hex("ffb7d5"),
+		Secondary:  Hex("c4a0ff"),
+		Muted:      Hex("3a2a40"),
+		Accent:     Hex("ff69b4"),
+		Success:    Hex("a0f0c0"),
+		Warning:    Hex("ffd080"),
+		Error:      Hex("ff6080"),
+		Info:       Hex("a0d0ff"),
+		Border:     Hex("3a2a40"),
+		Neutral:    []Color{Hex("2a1a30"), Hex("3a2a40"), Hex("4a3a50"), Hex("6a5a70")},
+	}
+	t.Semantic = SemanticColors{
+		TextPrimary:   Hex("f0d0e0"),
+		TextSecondary: Hex("7a6080"),
+		TextDisabled:  Hex("3a2a40"),
+		BorderDefault: Hex("3a2a40"),
+		BorderFocused: Hex("ffb7d5"),
+		BorderError:   Hex("ff6080"),
+		Shadow:        Hex("0a0510"),
+	}
+	t.Border = BorderRounded
+	t.Radius = 2
+	t.Typography = Typography{
+		Title:    DefaultStyle().Fg(Hex("ffb7d5")).WithAttrs(AttrBold),
+		Subtitle: DefaultStyle().Fg(Hex("c4a0ff")),
+		Body:     DefaultStyle().Fg(Hex("f0d0e0")),
+		Label:    DefaultStyle().Fg(Hex("ffb7d5")),
+		Mono:     DefaultStyle().Fg(Hex("f0d0e0")),
+	}
+	t.Widgets = WidgetThemes{
+		Button: WidgetTheme{
+			Normal:   DefaultStyle().Fg(Hex("1a1020")).Bg(Hex("ffb7d5")),
+			Hover:    DefaultStyle().Fg(Hex("1a1020")).Bg(Hex("a0f0c0")),
+			Pressed:  DefaultStyle().Fg(Hex("1a1020")).Bg(Hex("c4a0ff")),
+			Disabled: DefaultStyle().Fg(Hex("7a6080")).Bg(Hex("2a1a30")),
+		},
+		Input: WidgetTheme{
+			Normal:  DefaultStyle().Fg(Hex("f0d0e0")).Bg(Hex("2a1a30")),
+			Focused: DefaultStyle().Fg(Hex("f0d0e0")).Bg(Hex("1a1020")),
+			Error:   DefaultStyle().Fg(Hex("ff6080")).Bg(Hex("1a1020")),
+		},
+	}
+	return t
+}

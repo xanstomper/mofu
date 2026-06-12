@@ -162,8 +162,20 @@ func (a *Animator) CurrentValue(id uint64) (float64, bool) {
 // EasingFn maps normalised progress t∈[0,1] to [0,1].
 type EasingFn func(t float64) float64
 
-// EaseLinear is the default easing — no acceleration.
 func EaseLinear(t float64) float64 { return t }
+
+func EaseInOutBack(t float64) float64 {
+	const s = 1.70158 * 1.525
+	if t < 0.5 {
+		return (math.Pow(2*t, 2) * ((s+1)*2*t - s)) / 2
+	}
+	return (math.Pow(2*t-2, 2)*((s+1)*(t*2-2)+s)+2) / 2
+}
+
+func EaseOutQuint(t float64) float64 {
+	t--
+	return 1 + t*t*t*t*t
+}
 
 // ---------------------------------------------------------------------------
 // Spring — damped spring physics for smooth motion
