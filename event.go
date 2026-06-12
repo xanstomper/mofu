@@ -82,7 +82,6 @@ const (
 	KeyF12
 	KeyShiftTab
 
-	// Ctrl+key combinations
 	KeyCtrlAt            // Ctrl+Space / Ctrl+@
 	KeyCtrlA             // Ctrl+A
 	KeyCtrlB             // Ctrl+B
@@ -112,6 +111,135 @@ const (
 	KeyCtrlCaret         // Ctrl+^
 	KeyCtrlUnderscore    // Ctrl+_
 )
+
+func (k Key) String() string {
+	switch k {
+	case KeyUp:
+		return "up"
+	case KeyDown:
+		return "down"
+	case KeyRight:
+		return "right"
+	case KeyLeft:
+		return "left"
+	case KeyEnter:
+		return "enter"
+	case KeyEsc:
+		return "esc"
+	case KeyTab:
+		return "tab"
+	case KeySpace:
+		return "space"
+	case KeyBack:
+		return "backspace"
+	case KeyHome:
+		return "home"
+	case KeyEnd:
+		return "end"
+	case KeyPgUp:
+		return "pgup"
+	case KeyPgDn:
+		return "pgdown"
+	case KeyInsert:
+		return "insert"
+	case KeyDelete:
+		return "delete"
+	case KeyShiftTab:
+		return "shift+tab"
+	case KeyF1:
+		return "f1"
+	case KeyF2:
+		return "f2"
+	case KeyF3:
+		return "f3"
+	case KeyF4:
+		return "f4"
+	case KeyF5:
+		return "f5"
+	case KeyF6:
+		return "f6"
+	case KeyF7:
+		return "f7"
+	case KeyF8:
+		return "f8"
+	case KeyF9:
+		return "f9"
+	case KeyF10:
+		return "f10"
+	case KeyF11:
+		return "f11"
+	case KeyF12:
+		return "f12"
+	case KeyCtrlA:
+		return "ctrl+a"
+	case KeyCtrlB:
+		return "ctrl+b"
+	case KeyCtrlC:
+		return "ctrl+c"
+	case KeyCtrlD:
+		return "ctrl+d"
+	case KeyCtrlE:
+		return "ctrl+e"
+	case KeyCtrlF:
+		return "ctrl+f"
+	case KeyCtrlG:
+		return "ctrl+g"
+	case KeyCtrlJ:
+		return "ctrl+j"
+	case KeyCtrlK:
+		return "ctrl+k"
+	case KeyCtrlL:
+		return "ctrl+l"
+	case KeyCtrlN:
+		return "ctrl+n"
+	case KeyCtrlO:
+		return "ctrl+o"
+	case KeyCtrlP:
+		return "ctrl+p"
+	case KeyCtrlQ:
+		return "ctrl+q"
+	case KeyCtrlR:
+		return "ctrl+r"
+	case KeyCtrlS:
+		return "ctrl+s"
+	case KeyCtrlT:
+		return "ctrl+t"
+	case KeyCtrlU:
+		return "ctrl+u"
+	case KeyCtrlV:
+		return "ctrl+v"
+	case KeyCtrlW:
+		return "ctrl+w"
+	case KeyCtrlX:
+		return "ctrl+x"
+	case KeyCtrlY:
+		return "ctrl+y"
+	case KeyCtrlZ:
+		return "ctrl+z"
+	}
+	return ""
+}
+
+func (ke KeyEvent) String() string {
+	if len(ke.Runes) > 0 {
+		s := string(ke.Runes)
+		if ke.Ctrl {
+			s = "ctrl+" + s
+		}
+		if ke.Alt {
+			s = "alt+" + s
+		}
+		if ke.Shift {
+			s = "shift+" + s
+		}
+		return s
+	}
+	return ke.Key.String()
+}
+
+func (ke KeyEvent) Is(key Key) bool {
+	return ke.Key == key
+}
 
 type MouseEvent struct {
 	X, Y   int
