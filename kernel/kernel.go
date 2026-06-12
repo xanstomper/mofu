@@ -296,9 +296,6 @@ func (k *Kernel) tick() {
 
 	// 1. Collect dirty nodes
 	dirty := k.State.CollectDirty()
-	if len(dirty) == 0 {
-		return
-	}
 	k.dirtyCount.Store(int64(len(dirty)))
 
 	// 2. Propagate dirty bits (incremental, not full recompute)

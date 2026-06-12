@@ -239,6 +239,9 @@ func (p *Program) Run() error {
 		return err
 	}
 
+	// Enable VT processing AFTER raw mode so ANSI escape codes render
+	enableVTProcessing()
+
 	p.running.Store(true)
 	p.sm.TransitionTo(StateReady)
 
